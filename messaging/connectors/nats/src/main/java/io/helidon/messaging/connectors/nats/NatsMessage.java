@@ -93,13 +93,6 @@ public class NatsMessage<T> implements Message<T> {
         return CompletableFuture.completedFuture(null);
     }
 
-    @Override
-    public CompletionStage<Void> nack(Throwable reason, Metadata metadata) {
-        if (nackHandler != null) {
-            return nackHandler.nack(this, reason, metadata);
-        }
-        return CompletableFuture.completedFuture(null);
-    }
 
     /**
      * Get the underlying NATS message.

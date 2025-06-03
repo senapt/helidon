@@ -82,11 +82,39 @@ import org.eclipse.microprofile.reactive.streams.operators.SubscriberBuilder;
         description = "Password for NATS server authentication.",
         direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
         type = "string")
+@ConnectorAttribute(name = "jwt",
+        description = "JWT for NATS server authentication.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
+@ConnectorAttribute(name = "nkey",
+        description = "NKey seed for NATS server authentication.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
+@ConnectorAttribute(name = "credentials-file",
+        description = "Path to credentials file for NATS authentication.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
 @ConnectorAttribute(name = "tls-enabled",
         description = "Enable TLS/SSL connection to NATS server.",
         direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
         defaultValue = "false",
         type = "boolean")
+@ConnectorAttribute(name = "tls-keystore",
+        description = "Path to the keystore for TLS client certificates.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
+@ConnectorAttribute(name = "tls-keystore-password",
+        description = "Password for the TLS keystore.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
+@ConnectorAttribute(name = "tls-truststore",
+        description = "Path to the truststore for TLS server certificates.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
+@ConnectorAttribute(name = "tls-truststore-password",
+        description = "Password for the TLS truststore.",
+        direction = ConnectorAttribute.Direction.INCOMING_AND_OUTGOING,
+        type = "string")
 @ConnectorAttribute(name = "queue-group",
         description = "Queue group name for load balancing among consumers.",
         direction = ConnectorAttribute.Direction.INCOMING,
@@ -121,6 +149,8 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
     private final ScheduledExecutorService scheduler;
     private final Queue<NatsPublisher> publishers = new LinkedList<>();
     private final Queue<NatsSubscriber> subscribers = new LinkedList<>();
+    private final NatsConnectionManager connectionManager;
+    private final NatsHealthCheck healthCheck;
 
     /**
      * Constructor to instantiate NatsConnector.
@@ -134,6 +164,15 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
                 .config(config)
                 .build()
                 .get();
+        connectionManager = new NatsConnectionManager(scheduler);
+        healthCheck = new NatsHealthCheck(connectionManager);
+    }
+
+    /**
+     * Default constructor required for service loading.
+     */
+    public NatsConnector() {
+        this(Config.empty());
     }
 
     /**
@@ -169,6 +208,7 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
         NatsPublisher publisher = NatsPublisher.builder()
                 .config(MpConfig.toHelidonConfig(config))
                 .scheduler(scheduler)
+                .connectionManager(connectionManager)
                 .build();
         LOGGER.log(Level.DEBUG, () -> String.format("Publisher resource %s added", publisher));
         publishers.add(publisher);
@@ -180,6 +220,7 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
         NatsSubscriber subscriber = NatsSubscriber.builder()
                 .config(MpConfig.toHelidonConfig(config))
                 .scheduler(scheduler)
+                .connectionManager(connectionManager)
                 .build();
         LOGGER.log(Level.DEBUG, () -> String.format("Subscriber resource %s added", subscriber));
         subscribers.add(subscriber);
@@ -211,6 +252,9 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
     @Override
     public void stop() {
         LOGGER.log(Level.DEBUG, () -> "Terminating NatsConnector...");
+
+        // Stop connection manager first
+        connectionManager.stop();
 
         // Stops the scheduler first to make sure no new task will be triggered meanwhile resources are closing
         scheduler.shutdown();
@@ -245,6 +289,15 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
             // Inform about the errors
             failed.forEach(e -> LOGGER.log(Level.ERROR, "An error happened closing resource", e));
         }
+    }
+
+    /**
+     * Get the health check for this connector.
+     *
+     * @return the health check
+     */
+    public NatsHealthCheck healthCheck() {
+        return healthCheck;
     }
 
     /**

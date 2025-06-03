@@ -27,50 +27,29 @@ import io.helidon.config.Config;
 import io.helidon.messaging.Stoppable;
 
 import io.nats.client.Connection;
-import io.nats.client.ConnectionListener;
-import io.nats.client.ErrorListener;
-import io.nats.client.Nats;
-import io.nats.client.Options;
 import org.eclipse.microprofile.reactive.messaging.Message;
+import org.reactivestreams.Publisher;
+import org.reactivestreams.Subscriber;
 
 /**
  * NATS publisher for outgoing messages.
  */
-public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
+public class NatsPublisher implements Publisher<Message<?>>, Stoppable {
 
     private static final System.Logger LOGGER = System.getLogger(NatsPublisher.class.getName());
 
     private final Config config;
     private final ScheduledExecutorService scheduler;
+    private final NatsConnectionManager connectionManager;
     private final String subject;
-    private final String url;
-    private final boolean tlsEnabled;
-    private final String authToken;
-    private final String username;
-    private final String password;
-    private final Duration connectionTimeout;
-    private final int maxReconnects;
-    private final Duration reconnectWait;
-
-    private Connection natsConnection;
     private final AtomicBoolean stopped = new AtomicBoolean(false);
 
     private NatsPublisher(Builder builder) {
         this.config = builder.config;
         this.scheduler = builder.scheduler;
+        this.connectionManager = builder.connectionManager;
         this.subject = config.get("subject").asString().orElseThrow(
                 () -> new IllegalArgumentException("NATS subject is required"));
-        this.url = config.get("url").asString().orElseThrow(
-                () -> new IllegalArgumentException("NATS URL is required"));
-        this.tlsEnabled = config.get("tls-enabled").asBoolean().orElse(false);
-        this.authToken = config.get("auth-token").asString().orElse(null);
-        this.username = config.get("username").asString().orElse(null);
-        this.password = config.get("password").asString().orElse(null);
-        this.connectionTimeout = Duration.ofSeconds(config.get("connection-timeout").asInt().orElse(5));
-        this.maxReconnects = config.get("max-reconnects").asInt().orElse(10);
-        this.reconnectWait = Duration.ofSeconds(config.get("reconnect-wait").asInt().orElse(1));
-
-        initializeConnection();
     }
 
     /**
@@ -83,7 +62,7 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
     }
 
     @Override
-    public void subscribe(Flow.Subscriber<? super Message<?>> subscriber) {
+    public void subscribe(Subscriber<? super Message<?>> subscriber) {
         if (stopped.get()) {
             subscriber.onError(new IllegalStateException("Publisher is stopped"));
             return;
@@ -91,7 +70,7 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
 
         // For now, we'll create a simple subscription that reads from NATS
         // In a real implementation, this would be more sophisticated
-        subscriber.onSubscribe(new Flow.Subscription() {
+        subscriber.onSubscribe(new org.reactivestreams.Subscription() {
             @Override
             public void request(long n) {
                 // For outgoing connector, we typically don't generate messages
@@ -115,13 +94,10 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
             throw new IllegalStateException("Publisher is stopped");
         }
 
-        if (natsConnection == null || natsConnection.getStatus() != Connection.Status.CONNECTED) {
-            throw new IllegalStateException("NATS connection is not available");
-        }
-
         try {
+            Connection connection = connectionManager.getConnection(config);
             byte[] data = convertToBytes(message.getPayload());
-            natsConnection.publish(subject, data);
+            connection.publish(subject, data);
             LOGGER.log(Level.DEBUG, () -> String.format("Published message to subject: %s", subject));
         } catch (Exception e) {
             LOGGER.log(Level.ERROR, "Failed to publish message", e);
@@ -133,67 +109,10 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
     public void stop() {
         if (stopped.compareAndSet(false, true)) {
             LOGGER.log(Level.DEBUG, "Stopping NATS publisher");
-            if (natsConnection != null) {
-                try {
-                    natsConnection.close();
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    LOGGER.log(Level.WARNING, "Interrupted while closing NATS connection", e);
-                }
-            }
+            // Connection manager handles connection lifecycle
         }
     }
 
-    private void initializeConnection() {
-        try {
-            Options.Builder optionsBuilder = new Options.Builder()
-                    .server(url)
-                    .connectionTimeout(connectionTimeout)
-                    .maxReconnects(maxReconnects)
-                    .reconnectWait(reconnectWait)
-                    .connectionListener(new ConnectionListener() {
-                        @Override
-                        public void connectionEvent(Connection conn, Events type) {
-                            LOGGER.log(Level.INFO, () -> String.format("NATS connection event: %s", type));
-                        }
-                    })
-                    .errorListener(new ErrorListener() {
-                        @Override
-                        public void errorOccurred(Connection conn, String error) {
-                            LOGGER.log(Level.ERROR, () -> String.format("NATS error: %s", error));
-                        }
-
-                        @Override
-                        public void exceptionOccurred(Connection conn, Exception exp) {
-                            LOGGER.log(Level.ERROR, "NATS exception occurred", exp);
-                        }
-
-                        @Override
-                        public void slowConsumerDetected(Connection conn, io.nats.client.Consumer consumer) {
-                            LOGGER.log(Level.WARNING, "NATS slow consumer detected");
-                        }
-                    });
-
-            // Configure authentication
-            if (authToken != null && !authToken.trim().isEmpty()) {
-                optionsBuilder.token(authToken.toCharArray());
-            } else if (username != null && password != null) {
-                optionsBuilder.userInfo(username, password);
-            }
-
-            // Configure TLS
-            if (tlsEnabled) {
-                optionsBuilder.secure();
-            }
-
-            natsConnection = Nats.connect(optionsBuilder.build());
-            LOGGER.log(Level.INFO, () -> String.format("Connected to NATS server: %s", url));
-
-        } catch (Exception e) {
-            LOGGER.log(Level.ERROR, "Failed to connect to NATS server", e);
-            throw new RuntimeException("Failed to connect to NATS server", e);
-        }
-    }
 
     private byte[] convertToBytes(Object payload) {
         if (payload instanceof byte[]) {
@@ -212,6 +131,7 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
     public static class Builder {
         private Config config;
         private ScheduledExecutorService scheduler;
+        private NatsConnectionManager connectionManager;
 
         /**
          * Set the configuration.
@@ -236,6 +156,17 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
         }
 
         /**
+         * Set the connection manager.
+         *
+         * @param connectionManager the connection manager
+         * @return this builder
+         */
+        public Builder connectionManager(NatsConnectionManager connectionManager) {
+            this.connectionManager = connectionManager;
+            return this;
+        }
+
+        /**
          * Build the NATS publisher.
          *
          * @return the built publisher
@@ -246,6 +177,9 @@ public class NatsPublisher implements Flow.Publisher<Message<?>>, Stoppable {
             }
             if (scheduler == null) {
                 throw new IllegalArgumentException("Scheduler is required");
+            }
+            if (connectionManager == null) {
+                throw new IllegalArgumentException("Connection manager is required");
             }
             return new NatsPublisher(this);
         }
