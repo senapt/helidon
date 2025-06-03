@@ -19,20 +19,20 @@ package io.helidon.messaging.connectors.nats;
 import java.time.Duration;
 
 import io.helidon.config.Config;
-import io.helidon.config.ConfigSources;
+import io.helidon.messaging.ConnectorConfigBuilder;
+import org.eclipse.microprofile.reactive.messaging.spi.ConnectorFactory;
 
 /**
  * Builder for NATS connector configuration.
  */
-public class NatsConfigBuilder {
-
-    private final Config.Builder configBuilder;
+public final class NatsConfigBuilder extends ConnectorConfigBuilder {
 
     /**
      * Create a new config builder.
      */
     public NatsConfigBuilder() {
-        this.configBuilder = Config.builder();
+        super();
+        super.property(ConnectorFactory.CONNECTOR_ATTRIBUTE, NatsConnector.CONNECTOR_NAME);
     }
 
     /**
@@ -42,7 +42,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder url(String url) {
-        configBuilder.addSource(ConfigSources.create("url", url));
+        super.property("url", url);
         return this;
     }
 
@@ -53,7 +53,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder subject(String subject) {
-        configBuilder.addSource(ConfigSources.create("subject", subject));
+        super.property("subject", subject);
         return this;
     }
 
@@ -64,7 +64,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder connectionTimeout(Duration timeout) {
-        configBuilder.addSource(ConfigSources.create("connection-timeout", String.valueOf(timeout.toSeconds())));
+        super.property("connection-timeout", String.valueOf(timeout.toSeconds()));
         return this;
     }
 
@@ -75,7 +75,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder maxReconnects(int maxReconnects) {
-        configBuilder.addSource(ConfigSources.create("max-reconnects", String.valueOf(maxReconnects)));
+        super.property("max-reconnects", String.valueOf(maxReconnects));
         return this;
     }
 
@@ -86,7 +86,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder reconnectWait(Duration wait) {
-        configBuilder.addSource(ConfigSources.create("reconnect-wait", String.valueOf(wait.toSeconds())));
+        super.property("reconnect-wait", String.valueOf(wait.toSeconds()));
         return this;
     }
 
@@ -97,7 +97,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder authToken(String token) {
-        configBuilder.addSource(ConfigSources.create("auth-token", token));
+        super.property("auth-token", token);
         return this;
     }
 
@@ -108,7 +108,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder username(String username) {
-        configBuilder.addSource(ConfigSources.create("username", username));
+        super.property("username", username);
         return this;
     }
 
@@ -119,7 +119,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder password(String password) {
-        configBuilder.addSource(ConfigSources.create("password", password));
+        super.property("password", password);
         return this;
     }
 
@@ -130,7 +130,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder tlsEnabled(boolean tlsEnabled) {
-        configBuilder.addSource(ConfigSources.create("tls-enabled", String.valueOf(tlsEnabled)));
+        super.property("tls-enabled", String.valueOf(tlsEnabled));
         return this;
     }
 
@@ -141,7 +141,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder queueGroup(String queueGroup) {
-        configBuilder.addSource(ConfigSources.create("queue-group", queueGroup));
+        super.property("queue-group", queueGroup);
         return this;
     }
 
@@ -152,7 +152,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder jetstream(boolean jetstream) {
-        configBuilder.addSource(ConfigSources.create("jetstream", String.valueOf(jetstream)));
+        super.property("jetstream", String.valueOf(jetstream));
         return this;
     }
 
@@ -163,7 +163,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder stream(String stream) {
-        configBuilder.addSource(ConfigSources.create("stream", stream));
+        super.property("stream", stream);
         return this;
     }
 
@@ -174,7 +174,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder consumer(String consumer) {
-        configBuilder.addSource(ConfigSources.create("consumer", consumer));
+        super.property("consumer", consumer);
         return this;
     }
 
@@ -185,16 +185,7 @@ public class NatsConfigBuilder {
      * @return this builder
      */
     public NatsConfigBuilder ackWait(Duration ackWait) {
-        configBuilder.addSource(ConfigSources.create("ack-wait", String.valueOf(ackWait.toSeconds())));
+        super.property("ack-wait", String.valueOf(ackWait.toSeconds()));
         return this;
-    }
-
-    /**
-     * Build the configuration.
-     *
-     * @return the built configuration
-     */
-    public Config build() {
-        return configBuilder.build();
     }
 }
