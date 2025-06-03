@@ -14,28 +14,39 @@
  * limitations under the License.
  */
 
+import io.helidon.common.features.api.Feature;
+import io.helidon.common.features.api.HelidonFlavor;
+
 /**
  * NATS connector for MicroProfile Reactive Messaging.
  */
+@Feature(value = "NATS Connector",
+        description = "Reactive messaging connector for NATS",
+        in = {HelidonFlavor.SE, HelidonFlavor.MP},
+        path = {"Messaging", "NATS"}
+)
+@SuppressWarnings({ "requires-automatic", "requires-transitive-automatic" })
 module io.helidon.messaging.connectors.nats {
-    
-    requires io.helidon.config;
-    requires io.helidon.config.mp;
+
     requires io.helidon.common.configurable;
     requires io.helidon.common.context;
+    requires io.helidon.config.mp;
     requires io.helidon.messaging;
-    requires io.helidon.common.features.api;
-    
-    requires microprofile.reactive.messaging.api;
-    requires microprofile.reactive.streams.operators.api;
-    requires jakarta.cdi;
-    requires jakarta.inject;
-    
-    requires jnats;
-    requires java.logging;
-    
+    requires microprofile.config.api;
+
+    requires static io.helidon.common.features.api;
+    requires static jakarta.cdi;
+    requires static jakarta.inject;
+    requires static jnats;
+    requires static org.graalvm.nativeimage;
+
+    requires transitive io.helidon.config;
+    requires transitive microprofile.reactive.messaging.api;
+    requires transitive microprofile.reactive.streams.operators.api;
+    requires transitive org.slf4j;
+
     exports io.helidon.messaging.connectors.nats;
-    
+
     provides org.eclipse.microprofile.reactive.messaging.spi.ConnectorFactory
             with io.helidon.messaging.connectors.nats.NatsConnector;
 }

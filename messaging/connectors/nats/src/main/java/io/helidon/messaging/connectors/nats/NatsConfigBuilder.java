@@ -25,7 +25,7 @@ import io.helidon.config.ConfigSources;
  * Builder for NATS connector configuration.
  */
 public class NatsConfigBuilder {
-    
+
     private final Config.Builder configBuilder;
 
     /**

@@ -25,12 +25,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import io.helidon.config.Config;
 import io.helidon.messaging.Stoppable;
+
 import io.nats.client.Connection;
 import io.nats.client.ConnectionListener;
 import io.nats.client.ErrorListener;
 import io.nats.client.Nats;
 import io.nats.client.Options;
-
 import org.eclipse.microprofile.reactive.messaging.Message;
 
 /**

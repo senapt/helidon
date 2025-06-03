@@ -16,11 +16,11 @@
 
 /**
  * NATS connector for MicroProfile Reactive Messaging.
- * 
+ *
  * <p>This package provides a complete implementation of a NATS connector that follows
  * the MicroProfile Reactive Messaging specification. It supports both basic NATS
  * pub/sub messaging and advanced JetStream features.
- * 
+ *
  * <h2>Features</h2>
  * <ul>
  *   <li>Basic NATS pub/sub messaging</li>
@@ -31,10 +31,10 @@
  *   <li>Queue groups for load balancing</li>
  *   <li>Configurable timeouts and retry policies</li>
  * </ul>
- * 
+ *
  * <h2>Configuration</h2>
  * <p>The connector is configured using standard MicroProfile Config properties:
- * 
+ *
  * <pre>{@code
  * mp:
  *   messaging:
@@ -52,20 +52,20 @@
  *         connector: helidon-nats
  *         subject: "other.subject"
  * }</pre>
- * 
+ *
  * <h2>Usage</h2>
  * <p>Use standard MicroProfile Reactive Messaging annotations:
- * 
+ *
  * <pre>{@code
  * @ApplicationScoped
  * public class MyService {
- *     
+ *
  *     @Outgoing("my-channel")
  *     public Multi<String> generateMessages() {
  *         return Multi.createFrom().ticks().every(Duration.ofSeconds(1))
  *             .map(tick -> "Message " + tick);
  *     }
- *     
+ *
  *     @Incoming("other-channel")
  *     public void processMessage(String message) {
  *         System.out.println("Received: " + message);

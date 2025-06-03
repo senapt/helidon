@@ -112,7 +112,7 @@ import org.eclipse.microprofile.reactive.streams.operators.SubscriberBuilder;
 public class NatsConnector implements IncomingConnectorFactory, OutgoingConnectorFactory, Stoppable {
 
     private static final System.Logger LOGGER = System.getLogger(NatsConnector.class.getName());
-    
+
     /**
      * MicroProfile messaging NATS connector name.
      */
@@ -211,12 +211,12 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
     @Override
     public void stop() {
         LOGGER.log(Level.DEBUG, () -> "Terminating NatsConnector...");
-        
+
         // Stops the scheduler first to make sure no new task will be triggered meanwhile resources are closing
         scheduler.shutdown();
-        
+
         List<Exception> failed = new LinkedList<>();
-        
+
         // Stop all publishers
         NatsPublisher publisher;
         while ((publisher = publishers.poll()) != null) {
@@ -227,7 +227,7 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
                 failed.add(e);
             }
         }
-        
+
         // Stop all subscribers
         NatsSubscriber subscriber;
         while ((subscriber = subscribers.poll()) != null) {
@@ -238,7 +238,7 @@ public class NatsConnector implements IncomingConnectorFactory, OutgoingConnecto
                 failed.add(e);
             }
         }
-        
+
         if (failed.isEmpty()) {
             LOGGER.log(Level.DEBUG, "NatsConnector terminated successfully");
         } else {

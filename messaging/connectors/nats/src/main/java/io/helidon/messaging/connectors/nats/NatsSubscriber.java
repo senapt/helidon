@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import io.helidon.config.Config;
 import io.helidon.messaging.Stoppable;
+
 import io.nats.client.Connection;
 import io.nats.client.ConnectionListener;
 import io.nats.client.Dispatcher;
@@ -109,10 +110,10 @@ public class NatsSubscriber implements Flow.Subscriber<org.eclipse.microprofile.
             // Convert and publish to NATS
             byte[] data = convertToBytes(message.getPayload());
             natsConnection.publish(subject, data);
-            
+
             // Acknowledge the message
             message.ack();
-            
+
             LOGGER.log(Level.DEBUG, () -> String.format("Forwarded message to NATS subject: %s", subject));
         } catch (Exception e) {
             LOGGER.log(Level.ERROR, "Failed to forward message to NATS", e);
@@ -136,15 +137,15 @@ public class NatsSubscriber implements Flow.Subscriber<org.eclipse.microprofile.
     public void stop() {
         if (stopped.compareAndSet(false, true)) {
             LOGGER.log(Level.DEBUG, "Stopping NATS subscriber");
-            
+
             if (subscription != null && subscription.isActive()) {
                 subscription.unsubscribe();
             }
-            
+
             if (dispatcher != null) {
                 dispatcher.unsubscribe(subject);
             }
-            
+
             if (natsConnection != null) {
                 try {
                     natsConnection.close();
@@ -153,7 +154,7 @@ public class NatsSubscriber implements Flow.Subscriber<org.eclipse.microprofile.
                     LOGGER.log(Level.WARNING, "Interrupted while closing NATS connection", e);
                 }
             }
-            
+
             if (upstreamSubscription != null) {
                 upstreamSubscription.cancel();
             }
@@ -179,7 +180,7 @@ public class NatsSubscriber implements Flow.Subscriber<org.eclipse.microprofile.
                     String payload = new String(msg.getData(), StandardCharsets.UTF_8);
                     NatsMessage<String> natsMessage = NatsMessage.of(msg, payload);
                     messageConsumer.accept(natsMessage);
-                    
+
                     LOGGER.log(Level.DEBUG, () -> String.format("Received message from subject: %s", msg.getSubject()));
                 } catch (Exception e) {
                     LOGGER.log(Level.ERROR, "Error processing received message", e);
@@ -231,10 +232,10 @@ public class NatsSubscriber implements Flow.Subscriber<org.eclipse.microprofile.
             }
 
             natsConnection = Nats.connect(optionsBuilder.build());
-            
+
             // Create dispatcher for handling incoming messages
             dispatcher = natsConnection.createDispatcher();
-            
+
             LOGGER.log(Level.INFO, () -> String.format("Connected to NATS server: %s", url));
 
         } catch (Exception e) {
