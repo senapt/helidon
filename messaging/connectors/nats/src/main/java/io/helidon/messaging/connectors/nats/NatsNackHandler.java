@@ -31,8 +31,7 @@ public interface NatsNackHandler {
      *
      * @param message the message being nacked
      * @param reason the reason for the nack
-     * @param metadata additional metadata
      * @return completion stage that completes when the nack is handled
      */
-    CompletionStage<Void> nack(NatsMessage<?> message, Throwable reason, Message.Metadata metadata);
+    CompletionStage<Void> nack(NatsMessage<?> message, Throwable reason);
 }

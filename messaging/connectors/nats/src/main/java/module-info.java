@@ -31,13 +31,14 @@ module io.helidon.messaging.connectors.nats {
     requires io.helidon.common.configurable;
     requires io.helidon.common.context;
     requires io.helidon.config.mp;
+    requires io.helidon.health;
     requires io.helidon.messaging;
     requires microprofile.config.api;
 
     requires static io.helidon.common.features.api;
     requires static jakarta.cdi;
     requires static jakarta.inject;
-    requires static jnats;
+    requires static io.nats.jnats;
     requires static org.graalvm.nativeimage;
 
     requires transitive io.helidon.config;

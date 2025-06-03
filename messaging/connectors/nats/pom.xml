@@ -59,6 +59,10 @@
             <artifactId>helidon-messaging</artifactId>
         </dependency>
         <dependency>
+            <groupId>io.helidon.health</groupId>
+            <artifactId>helidon-health</artifactId>
+        </dependency>
+        <dependency>
             <groupId>io.helidon.common.features</groupId>
             <artifactId>helidon-common-features-api</artifactId>
             <optional>true</optional>
@@ -77,7 +81,6 @@
         <dependency>
             <groupId>io.nats</groupId>
             <artifactId>jnats</artifactId>
-            <version>2.19.1</version>
         </dependency>
         <!-- redirecting NATS logging to JUL logging -->
         <dependency>

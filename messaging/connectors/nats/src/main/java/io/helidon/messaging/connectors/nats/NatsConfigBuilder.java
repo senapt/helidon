@@ -189,4 +189,81 @@ public final class NatsConfigBuilder extends ConnectorConfigBuilder {
         super.property("ack-wait", String.valueOf(ackWait.toSeconds()));
         return this;
     }
+
+    /**
+     * Set the JWT for authentication.
+     *
+     * @param jwt the JWT token
+     * @return this builder
+     */
+    public NatsConfigBuilder jwt(String jwt) {
+        super.property("jwt", jwt);
+        return this;
+    }
+
+    /**
+     * Set the NKey seed for authentication.
+     *
+     * @param nkey the NKey seed
+     * @return this builder
+     */
+    public NatsConfigBuilder nkey(String nkey) {
+        super.property("nkey", nkey);
+        return this;
+    }
+
+    /**
+     * Set the credentials file path.
+     *
+     * @param credentialsFile the credentials file path
+     * @return this builder
+     */
+    public NatsConfigBuilder credentialsFile(String credentialsFile) {
+        super.property("credentials-file", credentialsFile);
+        return this;
+    }
+
+    /**
+     * Set the TLS keystore path.
+     *
+     * @param keystore the keystore path
+     * @return this builder
+     */
+    public NatsConfigBuilder tlsKeystore(String keystore) {
+        super.property("tls-keystore", keystore);
+        return this;
+    }
+
+    /**
+     * Set the TLS keystore password.
+     *
+     * @param password the keystore password
+     * @return this builder
+     */
+    public NatsConfigBuilder tlsKeystorePassword(String password) {
+        super.property("tls-keystore-password", password);
+        return this;
+    }
+
+    /**
+     * Set the TLS truststore path.
+     *
+     * @param truststore the truststore path
+     * @return this builder
+     */
+    public NatsConfigBuilder tlsTruststore(String truststore) {
+        super.property("tls-truststore", truststore);
+        return this;
+    }
+
+    /**
+     * Set the TLS truststore password.
+     *
+     * @param password the truststore password
+     * @return this builder
+     */
+    public NatsConfigBuilder tlsTruststorePassword(String password) {
+        super.property("tls-truststore-password", password);
+        return this;
+    }
 }
