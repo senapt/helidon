@@ -18,9 +18,10 @@ package io.helidon.messaging.connectors.nats;
 
 import java.time.Duration;
 
-import io.helidon.config.Config;
 import io.helidon.messaging.ConnectorConfigBuilder;
+
 import org.eclipse.microprofile.reactive.messaging.spi.ConnectorFactory;
+
 
 /**
  * Builder for NATS connector configuration.
