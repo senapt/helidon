@@ -16,6 +16,7 @@
 
 import java.nio.file.Path;
 
+import io.helidon.logging.common.LogConfig;
 import io.helidon.webclient.api.WebClient;
 
 import jakarta.json.JsonObject;
@@ -34,6 +35,9 @@ import static org.hamcrest.Matchers.equalTo;
 
 @Testcontainers(disabledWithoutDocker = true)
 class CracIT {
+    static {
+        LogConfig.initClass();
+    }
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CracIT.class);
 

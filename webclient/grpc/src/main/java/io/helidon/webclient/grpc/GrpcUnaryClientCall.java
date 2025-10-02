@@ -19,15 +19,12 @@ package io.helidon.webclient.grpc;
 import java.time.Duration;
 
 import io.helidon.common.buffers.BufferData;
-import io.helidon.http.http2.Http2FrameData;
-import io.helidon.webclient.http2.StreamTimeoutException;
 
 import io.grpc.CallOptions;
 import io.grpc.MethodDescriptor;
 import io.grpc.Status;
 
 import static java.lang.System.Logger.Level.DEBUG;
-import static java.lang.System.Logger.Level.ERROR;
 
 /**
  * An implementation of a unary gRPC call. Expects:
@@ -42,7 +39,7 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
 
     private volatile boolean closeCalled;
     private volatile boolean requestSent;
-    private volatile boolean responseSent;
+    private volatile boolean responseReceived;
 
     GrpcUnaryClientCall(GrpcChannel grpcChannel,
                         MethodDescriptor<ReqT, ResT> methodDescriptor,
@@ -67,7 +64,7 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
     @Override
     public void halfClose() {
         socket().log(LOGGER, DEBUG, "halfClose called");
-        close(responseSent ? Status.OK : Status.UNKNOWN);
+        close(responseReceived ? Status.OK : Status.UNKNOWN);
     }
 
     @Override
@@ -87,7 +84,7 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
         clientStream().writeData(BufferData.create(headerData, messageData), true);
         requestSent = true;
 
-        // Update bytes sent
+        // update bytes sent
         if (enableMetrics()) {
             bytesSent().addAndGet(serialized.length);
         }
@@ -99,25 +96,13 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
             // trailers or eos received?
             if (clientStream().trailers().isDone() || !clientStream().hasEntity()) {
                 socket().log(LOGGER, DEBUG, "[Reading thread] trailers or eos received");
+                responseReceived = true;
                 break;
             }
 
-            // attempt to read and queue
-            Http2FrameData frameData;
-            try {
-                frameData = clientStream().readOne(pollWaitTime());
-            } catch (StreamTimeoutException e) {
-                // abort or retry based on config settings
-                if (abortPollTimeExpired()) {
-                    socket().log(LOGGER, ERROR, "[Reading thread] HTTP/2 stream timeout, aborting");
-                    responseListener().onClose(Status.DEADLINE_EXCEEDED, EMPTY_METADATA);
-                    break;
-                }
-                socket().log(LOGGER, ERROR, "[Reading thread] HTTP/2 stream timeout, retrying");
-                continue;
-            }
-            if (frameData != null) {
-                BufferData bufferData = frameData.data();
+            // read single gRPC frame
+            BufferData bufferData = readGrpcFrame();
+            if (bufferData != null) {
                 socket().log(LOGGER, DEBUG, "response received");
 
                 // update bytes received excluding prefix
@@ -126,7 +111,7 @@ class GrpcUnaryClientCall<ReqT, ResT> extends GrpcBaseClientCall<ReqT, ResT> {
                 }
 
                 responseListener().onMessage(toResponse(bufferData));
-                responseSent = true;
+                responseReceived = true;
             }
         }
     }

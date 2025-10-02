@@ -49,6 +49,8 @@ import static io.helidon.service.registry.ServiceRegistryManager.SERVICE_INFO_CO
  * Basic implementation of the service registry with simple dependency support.
  */
 class CoreServiceRegistry implements ServiceRegistry, Scopes {
+    private static final ResolvedType COMMON_CONFIG = ResolvedType.create("io.helidon.common.config.Config");
+    private static final ResolvedType CONFIG = ResolvedType.create("io.helidon.config.Config");
     private static final AtomicInteger COUNTER = new AtomicInteger();
 
     private final String id = String.valueOf(COUNTER.incrementAndGet());
@@ -72,6 +74,8 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
 
     private final boolean cacheEnabled;
     private final LruCache<Lookup, List<ServiceInfo>> cache;
+    private final ReadWriteLock getCacheLock = new ReentrantReadWriteLock();
+    private final Map<Class<?>, Object> getCache = new IdentityHashMap<>();
 
     private final LazyValue<Scope> singletonScope = LazyValue
             .create(() -> createScope(Service.Singleton.TYPE, Optional::empty, id, Map.of()));
@@ -168,6 +172,40 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
         });
 
         this.serviceManagerForInstanceName = new InstanceNameServiceManager(this);
+    }
+
+    @SuppressWarnings("unchecked")
+    @Override
+    public <T> T get(Class<T> contract) {
+        // we can cache the results for repeated calls safely, as the number of classes in a system is finite
+        getCacheLock.readLock().lock();
+        T instance;
+        try {
+            instance = (T) getCache.get(contract);
+        } finally {
+            getCacheLock.readLock().unlock();
+        }
+        if (instance == null) {
+            instance = get(TypeName.create(contract));
+
+            List<ServiceManager<Object>> serviceManagers = lookupManagers(Lookup.create(contract));
+            // all must be singletons, otherwise cannot cache
+            var onlySingletons = serviceManagers.stream()
+                    .map(ServiceManager::descriptor)
+                    .map(ServiceInfo::scope)
+                    .allMatch(Service.Singleton.TYPE::equals);
+
+            if (onlySingletons) {
+                getCacheLock.writeLock().lock();
+                try {
+                    // we do not care if we write it twice - it is a singleton, it will be the same instance
+                    getCache.put(contract, instance);
+                } finally {
+                    getCacheLock.writeLock().unlock();
+                }
+            }
+        }
+        return instance;
     }
 
     @Override
@@ -451,7 +489,10 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
             ServiceInfo serviceInfo = servicesByType.get(contractType.type());
             if (serviceInfo == null) {
                 Set<ServiceInfo> serviceInfos = new TreeSet<>(SERVICE_INFO_COMPARATOR);
-                serviceInfos.addAll(servicesByContract.get(contractType));
+                Set<ServiceInfo> currentInfos = servicesByContract.get(contractType);
+                if (currentInfos != null) {
+                    serviceInfos.addAll(currentInfos);
+                }
 
                 // each instance will have its own descriptor
                 VirtualDescriptor vt = new VirtualDescriptor(contractType.type(), weight, instance);
@@ -480,7 +521,7 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
     }
 
     @SuppressWarnings("unchecked")
-    <T> void set(Class<T> contract, T[] instances) {
+    <T> void setQualified(Class<T> contract, T instance, Set<Qualifier> qualifiers) {
         if (!allowLateBinding) {
             throw new ServiceRegistryException("This service registry instance does not support late binding, as it was "
                                                        + "explicitly disabled through registry configuration: " + id);
@@ -491,38 +532,36 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
             ResolvedType contractType = ResolvedType.create(contract);
             checkValidContract(contractType);
             ServiceInfo serviceInfo = servicesByType.get(contractType.type());
+            if (serviceInfo != null && !serviceInfo.qualifiers().equals(qualifiers)) {
+                throw new IllegalArgumentException("Attempting to create a qualified service instance for "
+                                                           + "a service implementation, with wrong qualifiers: "
+                                                           + contract.getName() + ", qualifiers: " + qualifiers);
+            }
             if (serviceInfo == null) {
                 Set<ServiceInfo> serviceInfos = new TreeSet<>(SERVICE_INFO_COMPARATOR);
 
                 // we need to keep order of the instances; if somebody calls set, and then add, it may be tricky
-                double currentWeight = Weighted.DEFAULT_WEIGHT;
-                for (T instance : instances) {
-                    // each instance will have its own descriptor
-                    VirtualDescriptor vt = new VirtualDescriptor(contractType.type(), currentWeight, instance);
-                    ServiceProvider<Object> provider = new ServiceProvider<>(this,
-                                                                             vt);
-                    Activator<Object> activator = Activators.create(provider, instance);
 
-                    servicesByDescriptor.put(vt, new ServiceManager<>(this,
-                                                                      scopeSupplier(vt),
-                                                                      provider,
-                                                                      true,
-                                                                      () -> activator));
-                    serviceInfos.add(vt);
-                    // reduce by a small number, so other things behave as expected
-                    currentWeight -= 0.001;
-                }
+                VirtualDescriptor vt = new VirtualDescriptor(contractType.type(), Weighted.DEFAULT_WEIGHT, instance, qualifiers);
+
+                ServiceProvider<Object> provider = new ServiceProvider<>(this, vt);
+                Activator<Object> activator = Activators.create(provider, instance);
+
+                servicesByDescriptor.put(vt, new ServiceManager<>(this,
+                                                                  scopeSupplier(vt),
+                                                                  provider,
+                                                                  true,
+                                                                  () -> activator));
+                serviceInfos.add(vt);
+
                 // replace the instances
                 servicesByContract.put(contractType, serviceInfos);
             } else {
                 // this is a service instance, not contract implementation (i.e. the contract is actual service class)
                 ServiceProvider<Object> provider = new ServiceProvider<>(this,
                                                                          (ServiceDescriptor<Object>) serviceInfo);
-                if (instances.length != 1) {
-                    throw new ServiceRegistryException("Attempting to set a service provider with wrong number of instances. "
-                                                               + "A service provider must have exactly one instance.");
-                }
-                Activator<Object> activator = Activators.create(provider, instances[0]);
+
+                Activator<Object> activator = Activators.create(provider, instance);
                 servicesByDescriptor.put(serviceInfo, new ServiceManager<>(this,
                                                                            scopeSupplier(serviceInfo),
                                                                            provider,
@@ -534,6 +573,75 @@ class CoreServiceRegistry implements ServiceRegistry, Scopes {
         } finally {
             stateWriteLock.unlock();
         }
+
+        stateWriteLock.lock();
+    }
+
+    @SuppressWarnings("unchecked")
+    <T> void set(Class<T> contract, T[] instances) {
+        if (!allowLateBinding) {
+            throw new ServiceRegistryException("This service registry instance does not support late binding, as it was "
+                                                       + "explicitly disabled through registry configuration: " + id);
+        }
+
+        stateWriteLock.lock();
+        try {
+            ResolvedType contractType = ResolvedType.create(contract);
+            if (contractType.equals(CONFIG)) {
+                // this is a temporary solution to our problem of two config interfaces, we want users to only set it once
+                doSet(CONFIG, instances);
+                doSet(COMMON_CONFIG, instances);
+            } else {
+                doSet(contractType, instances);
+            }
+        } finally {
+            stateWriteLock.unlock();
+        }
+    }
+
+    private <T> void doSet(ResolvedType contractType, T[] instances) {
+        checkValidContract(contractType);
+        ServiceInfo serviceInfo = servicesByType.get(contractType.type());
+        if (serviceInfo == null) {
+            Set<ServiceInfo> serviceInfos = new TreeSet<>(SERVICE_INFO_COMPARATOR);
+
+            // we need to keep order of the instances; if somebody calls set, and then add, it may be tricky
+            double currentWeight = Weighted.DEFAULT_WEIGHT;
+            for (T instance : instances) {
+                // each instance will have its own descriptor
+                VirtualDescriptor vt = new VirtualDescriptor(contractType.type(), currentWeight, instance);
+                ServiceProvider<Object> provider = new ServiceProvider<>(this,
+                                                                         vt);
+                Activator<Object> activator = Activators.create(provider, instance);
+
+                servicesByDescriptor.put(vt, new ServiceManager<>(this,
+                                                                  scopeSupplier(vt),
+                                                                  provider,
+                                                                  true,
+                                                                  () -> activator));
+                serviceInfos.add(vt);
+                // reduce by a small number, so other things behave as expected
+                currentWeight -= 0.001;
+            }
+            // replace the instances
+            servicesByContract.put(contractType, serviceInfos);
+        } else {
+            // this is a service instance, not contract implementation (i.e. the contract is actual service class)
+            ServiceProvider<Object> provider = new ServiceProvider<>(this,
+                                                                     (ServiceDescriptor<Object>) serviceInfo);
+            if (instances.length != 1) {
+                throw new ServiceRegistryException("Attempting to set a service provider with wrong number of instances. "
+                                                           + "A service provider must have exactly one instance.");
+            }
+            Activator<Object> activator = Activators.create(provider, instances[0]);
+            servicesByDescriptor.put(serviceInfo, new ServiceManager<>(this,
+                                                                       scopeSupplier(serviceInfo),
+                                                                       provider,
+                                                                       true,
+                                                                       () -> activator));
+        }
+        // reset bindings, as build-time binding would ignore instances explicitly set
+        bindings.forgetContract(contractType);
     }
 
     InterceptionMetadata interceptionMetadata() {

@@ -69,3 +69,5 @@ src/test/resources/static/classpath/index.html
 ._inject_
 service.loader
 .repo
+reflection.proto
+manifest

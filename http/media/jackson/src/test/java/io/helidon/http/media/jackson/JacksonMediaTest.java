@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 
@@ -28,17 +29,22 @@ import io.helidon.common.GenericType;
 import io.helidon.common.config.Config;
 import io.helidon.common.media.type.MediaTypes;
 import io.helidon.common.testing.http.junit5.HttpHeaderMatcher;
+import io.helidon.http.ClientRequestHeaders;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.HttpMediaType;
+import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.WritableHeaders;
 import io.helidon.http.media.MediaContext;
 import io.helidon.http.media.MediaSupport;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 /*
@@ -46,11 +52,13 @@ When adding/updating tests in this class, consider if it should be done
  in the following tests a well:
     - JsonbMediaTest
     - JsonpMediaTest
+    - GsonMediaTest
  */
 class JacksonMediaTest {
     private static final Charset ISO_8859_2 = Charset.forName("ISO-8859-2");
     private static final GenericType<Book> BOOK_TYPE = GenericType.create(Book.class);
     private static final GenericType<List<Book>> BOOK_LIST_TYPE = new GenericType<List<Book>>() { };
+    private static final Instant INSTANT = Instant.now();
     private final MediaSupport support;
 
     JacksonMediaTest() {
@@ -207,6 +215,63 @@ class JacksonMediaTest {
                 .read(BOOK_LIST_TYPE, is, requestHeaders);
 
         assertThat(books, hasItems(new Book("čř"), new Book("šň")));
+    }
+
+    @Test
+    void testReadServerUtf8() {
+        WritableHeaders<?> responseHeaders = WritableHeaders.create();
+        ClientRequestHeaders headers = ClientRequestHeaders.create(WritableHeaders.create());
+        headers.accept(HttpMediaTypes.JSON_UTF_8);
+
+        MediaSupport.WriterResponse<Book> res = support.writer(BOOK_TYPE, headers, responseHeaders);
+
+        assertThat(res.support(), is(MediaSupport.SupportLevel.COMPATIBLE));
+
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+
+        res.supplier()
+                .get()
+                .write(BOOK_TYPE, new Book("čr"), bos, headers, responseHeaders);
+
+        assertThat(bos.size(), not(0));
+    }
+
+    @Test
+    void testCustomInstance() {
+        ObjectMapper objectMapper = new ObjectMapper().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        MediaSupport jacksonSupport = JacksonSupport.create(objectMapper);
+
+        WritableHeaders<?> requestHeaders = WritableHeaders.create();
+        requestHeaders.contentType(MediaTypes.APPLICATION_JSON);
+
+        MediaSupport.ReaderResponse<Book> res = jacksonSupport.reader(BOOK_TYPE, requestHeaders);
+        assertThat(res.support(), is(MediaSupport.SupportLevel.COMPATIBLE));
+
+        InputStream is =
+                new ByteArrayInputStream("{\"title\": \"Some Test\", \"unknown\": \"value\"}".getBytes(StandardCharsets.UTF_8));
+        Book book = res.supplier().get()
+                .read(BOOK_TYPE, is, requestHeaders);
+
+        assertThat(book.getTitle(), is("Some Test"));
+    }
+
+    @Test
+    void testCustomInstanceFromConfiguration() {
+        Config config = io.helidon.config.Config.create();
+        MediaSupport jacksonSupport = JacksonSupport.create(config);
+
+        WritableHeaders<?> requestHeaders = WritableHeaders.create();
+        requestHeaders.contentType(MediaTypes.APPLICATION_JSON);
+
+        MediaSupport.ReaderResponse<Book> res = jacksonSupport.reader(BOOK_TYPE, requestHeaders);
+        assertThat(res.support(), is(MediaSupport.SupportLevel.COMPATIBLE));
+
+        InputStream is =
+                new ByteArrayInputStream("{\"title\": \"Some Test\", \"unknown\": \"value\"}".getBytes(StandardCharsets.UTF_8));
+        Book book = res.supplier().get()
+                .read(BOOK_TYPE, is, requestHeaders);
+
+        assertThat(book.getTitle(), is("Some Test"));
     }
 
     public static class Book {

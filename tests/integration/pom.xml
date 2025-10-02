@@ -22,7 +22,7 @@
     <parent>
         <groupId>io.helidon.tests</groupId>
         <artifactId>helidon-tests-project</artifactId>
-        <version>4.2.0-SNAPSHOT</version>
+        <version>4.3.0-SNAPSHOT</version>
     </parent>
     <groupId>io.helidon.tests.integration</groupId>
     <artifactId>helidon-tests-integration-project</artifactId>
@@ -37,6 +37,7 @@
     <modules>
         <module>config</module>
         <module>dbclient</module>
+        <module>discovery</module>
         <module>eureka</module>
         <module>harness</module>
         <module>health</module>
@@ -73,6 +74,8 @@
         <module>mp-jaxrs-preserve-headers</module>
         <module>crac</module>
         <module>mp-metrics-gh-9995</module>
+        <module>context-http-propagation</module>
+        <module>transaction</module>
     </modules>
 
     <dependencyManagement>

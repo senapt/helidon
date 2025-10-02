@@ -23,7 +23,7 @@ ifndef::attributes-included[]
 // functional attributes
 :imagesdir: {rootdir}/images
 
-:helidon-version: 4.2.0-SNAPSHOT
+:helidon-version: 4.3.0-SNAPSHOT
 :helidon-version-is-release: false
 
 :sourcedir: {rootdir}/../java/io/helidon/docs
@@ -74,14 +74,16 @@ endif::[]
 :version-lib-jakarta-inject: 2.0
 
 // 3rd party
-:version-lib-eureka: 2.0.4
+:version-lib-eureka: 2.0.5
 :version-lib-eureka-client: {version-lib-eureka}
+:version-lib-eureka-server: {version-lib-eureka}
 :version-lib-jaeger: 1.22
 :version-lib-hikaricp: 5.0.1
 :version-lib-eclipselink: 4.0.2
 :version-lib-hibernate: 6.1
 :version-lib-oracle-jdbc: 21
 :version-lib-oracle-ucp: {version-lib-oracle-jdbc}
+:version-lib-opentelemetry: 1.29.0
 :version-plugin-jib: 0.10.1
 :version-plugin-jandex: 3.1.2
 :version-lib-micrometer: 1.11.1
@@ -203,7 +205,9 @@ endif::[]
 :config-git-javadoc-base-url: {javadoc-base-url}/io.helidon.config.git
 :config-mapping-javadoc-base-url: {javadoc-base-url}/io.helidon.config.objectmapping
 :configurable-javadoc-base-url: {javadoc-base-url}/io.helidon.common.configurable
+:context-javadoc-base-url: {javadoc-base-url}/io.helidon.common.context
 :cors-javadoc-base-url: {javadoc-base-url}/io.helidon.cors
+:discovery-javadoc-base-url: {javadoc-base-url}/io.helidon.discovery
 :faulttolerance-javadoc-base-url: {javadoc-base-url}/io.helidon.faulttolerance
 :grpc-server-javadoc-base-url: {javadoc-base-url}/io.helidon.webserver.grpc
 :health-javadoc-base-url: {javadoc-base-url}/io.helidon.health.checks
@@ -230,19 +234,23 @@ endif::[]
 :openapi-ui-javadoc-base-url: {javadoc-base-url}/io.helidon.integrations.openapi.ui
 :reactive-base-url: {javadoc-base-url}/io.helidon.common.reactive
 :scheduling-javadoc-base-url: {javadoc-base-url}/io.helidon.microprofile.scheduling
+:scheduling-se-javadoc-base-url: {javadoc-base-url}/io.helidon.scheduling
 :security-integration-jersey-base-url: {javadoc-base-url}/io.helidon.security.integration.jersey
 :security-integration-webserver-base-url: {javadoc-base-url}/io.helidon.webserver.security
 :service-registry-base-url: {javadoc-base-url}/io.helidon.service.registry
+:otel-config-javadoc-base-url: {javadoc-base-url}/io.helidon.telemetry.otelconfig
 :telemetry-javadoc-base-url: {javadoc-base-url}/io.helidon.microprofile.telemetry
 :tracing-javadoc-base-url: {javadoc-base-url}/io.helidon.tracing
 :tracing-otel-provider-javadoc-base-url: {javadoc-base-url}/io.helidon.tracing.providers.opentelemetry
 :types-javadoc-base-url: {javadoc-base-url}/io.helidon.common.types
 
 :webclient-javadoc-base-url: {javadoc-base-url}/io.helidon.webclient
+:webclient-api-javadoc-base-url: {javadoc-base-url}/io.helidon.webclient.api
 :webserver-javadoc-base-url: {javadoc-base-url}/io.helidon.webserver
 :webserver-staticcontent-javadoc-base-url: {webserver-javadoc-base-url}.staticcontent
 :webserver-cors-javadoc-base-url: {javadoc-base-url}/io.helidon.webserver.cors
 :graphql-javadoc-base-url: {javadoc-base-url}/io.helidon.graphql.server
+:security-javadoc-base-url: {javadoc-base-url}/io.helidon.security
 :security-provider-oidc-base-url: {javadoc-base-url}/io.helidon.security.providers.oidc
 :security-provider-httpauth-base-url: {javadoc-base-url}/io.helidon.security.providers.httpauth
 :security-provider-header-base-url: {javadoc-base-url}/io.helidon.security.providers.header
@@ -268,11 +276,12 @@ endif::[]
 :openapi-spec-base-url: https://github.com/OAI/OpenAPI-Specification/blob/master/versions
 :openapi-spec-url: {openapi-spec-base-url}/{openapi-version}.md
 
+:oci-doc-url: https://docs.oracle.com/en-us/iaas
 :oci-sdk-config-url: https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm#SDK_and_CLI_Configuration_File
 :oci-database-url: https://docs.oracle.com/en-us/iaas/Content/Database/home.htm
 :oci-cli-url: https://docs.oracle.com/en-us/iaas/tools/oci-cli/latest
-:oci-javasdk-url: https://docs.cloud.oracle.com/iaas/Content/API/SDKDocs/javasdk.htm
-:oci-objstore-url: https://docs.cloud.oracle.com/iaas/Content/Object/Concepts/objectstorageoverview.htm
+:oci-javasdk-url: https://docs.oracle.com/en-us/iaas/Content/API/SDKDocs/javasdk.htm
+:oci-objstore-url: https://docs.oracle.com/en-us/iaas/Content/Object/Concepts/objectstorageoverview.htm
 :oci-vault-url: https://docs.oracle.com/en-us/iaas/Content/KeyManagement/home.htm
 
 :oci-javasdk-javadoc-base-url: https://docs.oracle.com/en-us/iaas/tools/java/latest
@@ -287,6 +296,7 @@ endif::[]
 :oracle-ucp-doc-base-url: https://docs.oracle.com/en/database/oracle/oracle-database/{version-lib-oracle-ucp}/jjucp
 :oracle-ucp-javadoc-base-url: https://docs.oracle.com/en/database/oracle/oracle-database/{version-lib-oracle-ucp}/jjuar
 
+:otel-exporter-doc-base-url: https://javadoc.io/static/io.opentelemetry/opentelemetry-exporter-otlp/{otel-version}/io/opentelemetry/exporter/otlp/trace/package-summary.html
 :micrometer-url: https://micrometer.io
 :micrometer-api-url: https://docs.micrometer.io/micrometer/reference/concepts
 :micrometer-javadoc-base-url: https://javadoc.io/doc/io.micrometer

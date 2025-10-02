@@ -30,14 +30,14 @@ This guide will help you upgrade a Helidon SE 3.x application to 4.x.
 
 == Java 21 Runtime
 
-Java 17 is no longer supported in Helidon 4. Java 21 or newer is required.
+Java 17 is no longer supported in Helidon 4. Java 21 or newer is required. Java 25 or newer is highly recommended.
 Please follow the instructions in xref:{rootdir}/about/prerequisites.adoc[Prerequisites] for proper installation.
 
 Helidon 4 no longer uses Netty.
 Helidon SE is now running on Helidon WebServer which is based on virtual threads technology, available in Java 21.
 
 
-== Programming paradigm
+== Programming Paradigm
 
 Helidon SE has changed from an asynchronous style API to an imperative/blocking style API that is optimized for use with virtual threads.
 Currently, there is no compatibility API available
@@ -140,6 +140,25 @@ Main difference is that a feature can add `Filters` and it cannot be registered 
 Features are not registered immediately—each feature can define a `Weight` or implement `Weighted` to order features according to their weight. Higher-weighted features are registered first.
 This is to allow ordering of features in a meaningful way (e.g. Context should be first, Tracing second, Security third etc).
 
+== Adding Additional Routing Criteria
+
+In prior versions, the `RequestPredicate` class was used to specify more routing criteria. This class has been removed from Helidon 4. 
+
+So, for example, if you used the following in Helidon 3:
+
+[source,java]
+.Helidon 3.x using `RequestPredicate` 
+----
+include::{sourcedir}/se/guides/Upgrade4xSnippets.java[tag=snippet_11, indent=0]
+----
+
+Then, you would use the following in Helidon 4:
+
+[source,java]
+.Helidon 4 `RequestPredicate` removed
+----
+include::{sourcedir}/se/guides/Upgrade4xSnippets.java[tag=snippet_12, indent=0]
+----
 
 == Services
 
@@ -288,15 +307,6 @@ Metrics has changed significantly in Helidon 4. See xref:../metrics/metrics.adoc
 === Global Configuration
 
 The global configuration represents a single instance of the `Config` class, which is implicitly employed by certain Helidon components. Furthermore, it offers a handy approach for your application to access configuration information from any part of your code.
-
-It is recommended that you explicitly initialize global configuration before using any Helidon components:
-
-[source,java]
-----
-include::{sourcedir}/se/guides/Upgrade4xSnippets.java[tag=snippet_7, indent=0]
-----
-
-You can then utilize the global configuration for easy retrieval of your application's configuration:
 
 [source,java]
 ----

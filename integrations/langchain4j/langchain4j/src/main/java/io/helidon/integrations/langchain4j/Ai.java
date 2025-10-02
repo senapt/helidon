@@ -66,8 +66,8 @@ public final class Ai {
      *
      * <p>The primary components include:</p>
      * <ul>
-     *   <li>{@code dev.langchain4j.model.chat.ChatLanguageModel} or
-     *   {@code dev.langchain4j.model.chat.StreamingChatLanguageModel} -
+     *   <li>{@code dev.langchain4j.model.chat.ChatModel} or
+     *   {@code dev.langchain4j.model.chat.StreamingChatModel} -
      *       Models that handle chat-based language interactions.</li>
      *   <li>{@code dev.langchain4j.memory.ChatMemory} or {@code dev.langchain4j.memory.chat.ChatMemoryProvider} -
      *       Components for storing and managing chat memory.</li>
@@ -86,8 +86,8 @@ public final class Ai {
      * <p>If {@code autoDiscovery} is set to {@code false}, only components explicitly specified using annotations
      * are included in the service, allowing manual control over the service composition.</p>
      *
-     * <p>At a minimum, either a {@code dev.langchain4j.model.chat.ChatLanguageModel} or
-     * {@code dev.langchain4j.model.chat.StreamingChatLanguageModel} is required for the service to function
+     * <p>At a minimum, either a {@code dev.langchain4j.model.chat.ChatModel} or
+     * {@code dev.langchain4j.model.chat.StreamingChatModel} is required for the service to function
      * effectively.</p>
      */
     @Target(TYPE)
@@ -229,6 +229,38 @@ public final class Ai {
          * @return name of the retrieval augmentor
          */
         String value();
+    }
+
+    /**
+     * Annotation to specify a ToolProvider for the service.
+     * This is mutually exclusive with the {@link McpClients}.
+     */
+    @Target(TYPE)
+    @Retention(RUNTIME)
+    public @interface ToolProvider {
+        /**
+         * Name of the Tool provider to be used.
+         *
+         * @return name of the Tool provider
+         */
+        String value();
+    }
+
+    /**
+     * Annotation to specify an MCP Clients to be used in McpToolProvider.
+     * This is mutually exclusive with the {@link ToolProvider}.
+     * It requires to have {@code dev.langchain4j:langchain4j-mcp} dependency added on the classpath for it to work properly.
+     */
+    @Target(TYPE)
+    @Retention(RUNTIME)
+    public @interface McpClients {
+        /**
+         * Names of the MCP Clients to be used in McpToolProvider creation.
+         * These names are mapped from the {@code key} values of the MCP Client.
+         *
+         * @return client names
+         */
+        String[] value() default {};
     }
 
     /**

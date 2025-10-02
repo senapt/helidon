@@ -14,17 +14,16 @@
  * limitations under the License.
  */
 
-import io.helidon.common.features.api.Feature;
+import io.helidon.common.features.api.Features;
 import io.helidon.common.features.api.HelidonFlavor;
 
 /**
  * Helidon WebClient API.
  */
-@Feature(value = "WebClient",
-         description = "WebClient",
-         in = HelidonFlavor.SE,
-         path = "WebClient"
-)
+@Features.Name("WebClient")
+@Features.Description("WebClient")
+@Features.Flavor(HelidonFlavor.SE)
+@Features.Path("WebClient")
 module io.helidon.webclient.api {
 
     requires io.helidon.builder.api; // @Builder - interfaces are a runtime dependency
@@ -43,6 +42,7 @@ module io.helidon.webclient.api {
     requires transitive io.helidon.http.media;
     requires transitive io.helidon.http;
     requires io.helidon.common.resumable;
+    requires io.helidon.service.registry;
 
     exports io.helidon.webclient.api;
     exports io.helidon.webclient.spi;

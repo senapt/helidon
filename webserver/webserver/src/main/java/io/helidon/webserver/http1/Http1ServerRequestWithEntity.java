@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2023 Oracle and/or its affiliates.
+ * Copyright (c) 2022, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import java.util.function.UnaryOperator;
 
 import io.helidon.common.LazyValue;
 import io.helidon.common.buffers.BufferData;
+import io.helidon.common.concurrency.limits.LimitAlgorithm;
 import io.helidon.http.HttpPrologue;
 import io.helidon.http.ServerRequestHeaders;
 import io.helidon.http.Status;
@@ -54,8 +55,9 @@ final class Http1ServerRequestWithEntity extends Http1ServerRequest {
                                  int requestId,
                                  boolean expectContinue,
                                  CountDownLatch entityReadLatch,
-                                 Supplier<BufferData> readEntityFromPipeline) {
-        super(ctx, security, prologue, headers, requestId);
+                                 Supplier<BufferData> readEntityFromPipeline,
+                                 LimitAlgorithm.Outcome limitOutcome) {
+        super(ctx, security, prologue, headers, requestId, limitOutcome);
         this.ctx = ctx;
         this.connection = connection;
         this.expectContinue = expectContinue;
@@ -96,6 +98,11 @@ final class Http1ServerRequestWithEntity extends Http1ServerRequest {
         Objects.requireNonNull(filterFunction);
         UnaryOperator<InputStream> current = this.streamFilter;
         this.streamFilter = it -> filterFunction.apply(current.apply(it));
+    }
+
+    @Override
+    public String toString() {
+        return super.toString() + " with entity";
     }
 
     private void trySend100(boolean drain) {

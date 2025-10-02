@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,18 +34,22 @@ import io.helidon.http.WritableHeaders;
 import io.helidon.http.media.MediaContext;
 import io.helidon.http.media.MediaSupport;
 
+import jakarta.json.bind.JsonbException;
 import org.junit.jupiter.api.Test;
 
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.startsWith;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /*
 When adding/updating tests in this class, consider if it should be done
  in the following tests a well:
     - JacksonMediaTest
     - JsonpMediaTest
+    - GsonMediaTest
  */
 class JsonbMediaTest {
     private static final Charset ISO_8859_2 = Charset.forName("ISO-8859-2");
@@ -207,6 +211,24 @@ class JsonbMediaTest {
                 .read(BOOK_LIST_TYPE, is, requestHeaders);
 
         assertThat(books, hasItems(new Book("čř"), new Book("šň")));
+    }
+
+    @Test
+    void testCustomInstanceFromConfiguration() {
+        Config config = io.helidon.config.Config.create();
+        MediaSupport jsonbSupport = JsonbSupport.create(config);
+
+        WritableHeaders<?> requestHeaders = WritableHeaders.create();
+        requestHeaders.contentType(MediaTypes.APPLICATION_JSON);
+
+        MediaSupport.ReaderResponse<Book> res = jsonbSupport.reader(BOOK_TYPE, requestHeaders);
+        assertThat(res.support(), is(MediaSupport.SupportLevel.COMPATIBLE));
+
+        InputStream is =
+                new ByteArrayInputStream("{\"Title\": \"Some Test\", \"unknown\": \"value\"}".getBytes(StandardCharsets.UTF_8));
+        JsonbException jsonbException = assertThrows(JsonbException.class,
+                                                     () -> res.supplier().get().read(BOOK_TYPE, is, requestHeaders));
+        assertThat(jsonbException.getMessage(), startsWith("Json property unknown"));
     }
 
     public static class Book {

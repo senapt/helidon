@@ -21,7 +21,7 @@
     <parent>
         <groupId>io.helidon.http</groupId>
         <artifactId>helidon-http-project</artifactId>
-        <version>4.2.0-SNAPSHOT</version>
+        <version>4.3.0-SNAPSHOT</version>
     </parent>
 
     <groupId>io.helidon.http.media</groupId>
@@ -34,6 +34,7 @@
         <module>jsonb</module>
         <module>jsonp</module>
         <module>jackson</module>
+        <module>gson</module>
         <module>multipart</module>
     </modules>
 </project>

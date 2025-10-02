@@ -24,7 +24,7 @@
     <parent>
         <groupId>io.helidon.security.providers</groupId>
         <artifactId>helidon-security-providers-project</artifactId>
-        <version>4.2.0-SNAPSHOT</version>
+        <version>4.3.0-SNAPSHOT</version>
     </parent>
     <artifactId>helidon-security-providers-jwt</artifactId>
     <name>Helidon Security Providers JWT</name>
@@ -97,7 +97,7 @@
                         </path>
                         <path>
                             <groupId>io.helidon.common.features</groupId>
-                            <artifactId>helidon-common-features-processor</artifactId>
+                            <artifactId>helidon-common-features-codegen</artifactId>
                             <version>${helidon.version}</version>
                         </path>
                         <path>
@@ -115,7 +115,7 @@
                     </dependency>
                     <dependency>
                         <groupId>io.helidon.common.features</groupId>
-                        <artifactId>helidon-common-features-processor</artifactId>
+                        <artifactId>helidon-common-features-codegen</artifactId>
                         <version>${helidon.version}</version>
                     </dependency>
                     <dependency>

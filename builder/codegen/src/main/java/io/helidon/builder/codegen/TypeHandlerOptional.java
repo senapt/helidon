@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -161,45 +161,51 @@ class TypeHandlerOptional extends TypeHandler.OneTypeHandler {
                             .build();
                 }
             }
-            String argumentName = "consumer";
-            TypeName argumentType = TypeName.builder()
-                    .type(Consumer.class)
-                    .addTypeArgument(builderType)
-                    .build();
 
-            Javadoc javadoc = setterJavadoc(blueprintJavadoc)
-                            .addParameter(argumentName, blueprintJavadoc.returnDescription())
-                            .build();
+            if (!skipBuilderConsumer(builderType)) {
+                String argumentName = "consumer";
+                TypeName argumentType = TypeName.builder()
+                        .type(Consumer.class)
+                        .addTypeArgument(builderType)
+                        .build();
 
-            TypeName finalBuilderType = builderType;
-            classBuilder.addMethod(builder -> builder.name(setterName())
-                    .accessModifier(setterAccessModifier(configured))
-                    .returnType(returnType)
-                    .addParameter(param -> param.name(argumentName)
-                            .type(argumentType))
-                    .addContent(Objects.class)
-                    .javadoc(javadoc)
-                    .addContentLine(".requireNonNull(" + argumentName + ");")
-                    .addContent("var builder = ")
-                    .addContent(fm.typeWithFactoryMethod().genericTypeName())
-                    .addContent(".")
-                    .update(it -> {
-                        if (!finalBuilderType.typeArguments().isEmpty()) {
-                            it.addContent("<");
-                            Iterator<TypeName> iterator = finalBuilderType.typeArguments().iterator();
-                            while (iterator.hasNext()) {
-                                it.addContent(iterator.next());
-                                if (iterator.hasNext()) {
-                                    it.addContent(", ");
+                Javadoc javadoc = setterJavadoc(blueprintJavadoc)
+                        .addParameter(argumentName, blueprintJavadoc.returnDescription())
+                        .build();
+
+                TypeName finalBuilderType = builderType;
+                classBuilder.addMethod(builder -> builder.name(setterName())
+                        .accessModifier(setterAccessModifier(configured))
+                        .returnType(returnType)
+                        .addParameter(param -> param.name(argumentName)
+                                .type(argumentType))
+                        .addContent(Objects.class)
+                        .javadoc(javadoc)
+                        .addContentLine(".requireNonNull(" + argumentName + ");")
+                        .addContent("var builder = ")
+                        .addContent(fm.typeWithFactoryMethod().genericTypeName())
+                        .addContent(".")
+                        .update(it -> {
+                            Iterator<TypeName> iterator = finalBuilderType.typeArguments()
+                                    .stream()
+                                    .filter(t -> !t.name().equals("?"))
+                                    .iterator();
+                            if (iterator.hasNext()) {
+                                it.addContent("<");
+                                while (iterator.hasNext()) {
+                                    it.addContent(iterator.next());
+                                    if (iterator.hasNext()) {
+                                        it.addContent(", ");
+                                    }
                                 }
+                                it.addContent(">");
                             }
-                            it.addContent(">");
-                        }
-                    })
-                    .addContentLine(fm.createMethodName() + "();")
-                    .addContentLine("consumer.accept(builder);")
-                    .addContentLine("this." + name() + "(builder.build());")
-                    .addContentLine("return self();"));
+                        })
+                        .addContentLine(fm.createMethodName() + "();")
+                        .addContentLine("consumer.accept(builder);")
+                        .addContentLine("this." + name() + "(builder.build());")
+                        .addContentLine("return self();"));
+            }
         }
     }
 

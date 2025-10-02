@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,8 +25,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -38,14 +38,17 @@ import io.helidon.codegen.classmodel.Javadoc;
 import io.helidon.codegen.classmodel.Method;
 import io.helidon.codegen.classmodel.TypeArgument;
 import io.helidon.common.Errors;
-import io.helidon.common.HelidonServiceLoader;
 import io.helidon.common.types.AccessModifier;
 import io.helidon.common.types.Annotations;
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 
+import static io.helidon.builder.codegen.Types.BUILDER_SUPPORT;
+import static io.helidon.builder.codegen.Types.COMMON_CONFIG;
+import static io.helidon.builder.codegen.Types.CONFIG;
 import static io.helidon.builder.codegen.Types.CONFIG_BUILDER_SUPPORT;
 import static io.helidon.builder.codegen.Types.REGISTRY_BUILDER_SUPPORT;
+import static io.helidon.builder.codegen.Types.SERVICE_NAMED;
 import static io.helidon.codegen.CodegenUtil.capitalize;
 import static io.helidon.common.types.TypeNames.LIST;
 import static io.helidon.common.types.TypeNames.MAP;
@@ -53,6 +56,11 @@ import static io.helidon.common.types.TypeNames.OPTIONAL;
 import static io.helidon.common.types.TypeNames.SET;
 
 final class GenerateAbstractBuilder {
+
+    private static final String SERVICE_REGISTRY_CONFIG_KEY = "service-registry";
+    private static final TypeName OPTIONAL_COMMON_CONFIG = TypeName.builder(TypeNames.OPTIONAL)
+            .addTypeArgument(COMMON_CONFIG)
+            .build();
 
     private GenerateAbstractBuilder() {
     }
@@ -266,13 +274,17 @@ final class GenerateAbstractBuilder {
         for (PrototypeProperty child : properties) {
             String getterName = child.getterName();
             if ("config".equals(getterName) && configured.configured()) {
-                if (child.typeHandler().actualType().equals(Types.COMMON_CONFIG)) {
+                if (child.typeHandler().actualType().equals(Types.CONFIG)) {
                     // this will always exist
+                    continue;
+                }
+                if (child.typeHandler().actualType().equals(Types.COMMON_CONFIG)) {
+                    // we are fine with either
                     continue;
                 }
                 // now we have a method called config with wrong return type - this is not supported
                 throw new IllegalArgumentException("Configured property named \"config\" can only be of type "
-                                                           + Types.COMMON_CONFIG.declaredName() + ", but is: "
+                                                           + Types.CONFIG.declaredName() + ", but is: "
                                                            + child.typeName().declaredName());
             }
             /*
@@ -281,6 +293,7 @@ final class GenerateAbstractBuilder {
             }
              */
             Method.Builder method = Method.builder()
+                    .accessModifier(child.configuredOption().accessModifier())
                     .name(getterName)
                     .returnType(child.builderGetterType());
             child.builderGetter(method);
@@ -300,9 +313,11 @@ final class GenerateAbstractBuilder {
         }
 
         if (configured.configured()) {
+            TypeName configType = configType(properties).orElse(COMMON_CONFIG);
+
             TypeName configReturnType = TypeName.builder()
                     .type(Optional.class)
-                    .addTypeArgument(Types.COMMON_CONFIG)
+                    .addTypeArgument(configType)
                     .build();
             Method.Builder method = Method.builder()
                     .name("config")
@@ -313,6 +328,15 @@ final class GenerateAbstractBuilder {
                     .addContentLine(".ofNullable(config);");
             classBuilder.addMethod(method);
         }
+    }
+
+    private static Optional<TypeName> configType(List<PrototypeProperty> properties) {
+        for (PrototypeProperty property : properties) {
+            if (TypeHandler.isConfigProperty(property.typeHandler())) {
+                return Optional.of(property.typeHandler().actualType());
+            }
+        }
+        return Optional.empty();
     }
 
     private static void serviceRegistrySetter(InnerClass.Builder classBuilder) {
@@ -346,7 +370,8 @@ final class GenerateAbstractBuilder {
         classBuilder.addMethod(builder);
     }
 
-    private static void createConfigMethod(InnerClass.Builder classBuilder, TypeContext typeContext,
+    private static void createConfigMethod(InnerClass.Builder classBuilder,
+                                           TypeContext typeContext,
                                            AnnotationDataConfigured configured,
                                            List<PrototypeProperty> properties) {
         /*
@@ -367,12 +392,29 @@ final class GenerateAbstractBuilder {
                     .addLine("Config to use.")
                     .build();
         }
+
+        // backward compatibility
+        classBuilder.addMethod(commonConfig -> commonConfig
+                .name("config")
+                .javadoc(Javadoc.builder(javadoc)
+                                 .addTag("deprecated", "use {@link #config(" + Types.CONFIG.fqName() + ")}")
+                                 .build())
+                .returnType(TypeArgument.create("BUILDER"), "updated builder instance")
+                .addParameter(param -> param.name("config")
+                        .type(Types.COMMON_CONFIG)
+                        .description("configuration instance used to obtain values to update this builder"))
+                .addAnnotation(Annotations.DEPRECATED)
+                .addContent("return config(")
+                .addContent(Types.CONFIG)
+                .addContentLine(".config(config));")
+        );
+
         Method.Builder builder = Method.builder()
                 .name("config")
                 .javadoc(javadoc)
                 .returnType(TypeArgument.create("BUILDER"), "updated builder instance")
                 .addParameter(param -> param.name("config")
-                        .type(Types.COMMON_CONFIG)
+                        .type(Types.CONFIG)
                         .description("configuration instance used to obtain values to update this builder"))
                 .addAnnotation(Annotations.OVERRIDE)
                 .addContent(Objects.class)
@@ -386,10 +428,21 @@ final class GenerateAbstractBuilder {
         if (configured.configured()) {
             for (PrototypeProperty child : properties) {
                 if (child.configuredOption().configured() && !child.configuredOption().provider()) {
-                    // registry service can never reach here, as they do not support Option.Configured
+                    if (child.registryService()) {
+                        // Injectable option can have a qualifier configured instead of an actual value
+                        builder.addContent("if (!config.get(")
+                                .addContentLiteral(child.configuredOption().configKey() + "." + SERVICE_REGISTRY_CONFIG_KEY)
+                                .addContentLine(").exists()) {")
+                                .increaseContentPadding();
+                    }
+
                     child.typeHandler().generateFromConfig(builder,
                                                            child.configuredOption(),
                                                            child.factoryMethods());
+                    if (child.registryService()) {
+                        builder.decreaseContentPadding()
+                                .addContentLine("}");
+                    }
                 }
             }
         }
@@ -431,9 +484,21 @@ final class GenerateAbstractBuilder {
                 Special handling from config - we have to assign it to field, we cannot go through (config(Config))
                 */
                 if (isConfigProperty(property)) {
-                    methodBuilder.addContent("this.config = prototype.config()");
-                    if (declaredType.isOptional()) {
-                        methodBuilder.addContent(".orElse(null)");
+                    if (property.typeHandler().actualType().equals(COMMON_CONFIG)) {
+                        if (declaredType.isOptional()) {
+                            methodBuilder.addContent("this.config = prototype.config().map(")
+                                    .addContent(CONFIG)
+                                    .addContent("::config).orElse(null)");
+                        } else {
+                            methodBuilder.addContent("this.config = ")
+                                    .addContent(CONFIG)
+                                    .addContent(".config(prototype.config())");
+                        }
+                    } else {
+                        methodBuilder.addContent("this.config = prototype.config()");
+                        if (declaredType.isOptional()) {
+                            methodBuilder.addContent(".orElse(null)");
+                        }
                     }
                     methodBuilder.addContentLine(";");
                 } else {
@@ -532,7 +597,7 @@ final class GenerateAbstractBuilder {
 
     private static void fields(InnerClass.Builder classBuilder, TypeContext typeContext, boolean isBuilder) {
         if (isBuilder && (typeContext.configuredData().configured() || hasConfig(typeContext.propertyData().properties()))) {
-            classBuilder.addField(builder -> builder.type(Types.COMMON_CONFIG).name("config"));
+            classBuilder.addField(builder -> builder.type(Types.CONFIG).name("config"));
         }
         if (isBuilder && typeContext.typeInfo().supportsServiceRegistry()) {
             classBuilder.addField(builder -> builder.type(Types.SERVICE_REGISTRY).name("serviceRegistry"));
@@ -596,10 +661,10 @@ final class GenerateAbstractBuilder {
         if (typeContext.typeInfo().supportsServiceRegistry() || typeContext.propertyData().hasProvider()) {
             boolean configured = typeContext.configuredData().configured();
 
-            if (configured && typeContext.propertyData().hasProvider()) {
+            if (configured) {
                 // need to have a non-null config instance
                 preBuildBuilder.addContent("var config = this.config == null ? ")
-                        .addContent(Types.COMMON_CONFIG)
+                        .addContent(Types.CONFIG)
                         .addContentLine(".empty() : this.config;");
             }
 
@@ -624,8 +689,7 @@ final class GenerateAbstractBuilder {
                                                          property,
                                                          propertyConfigured,
                                                          configuredOption,
-                                                         providerType,
-                                                         defaultDiscoverServices);
+                                                         providerType);
                     } else {
                         serviceLoaderPropertyDiscovery(preBuildBuilder,
                                                        property,
@@ -655,16 +719,8 @@ final class GenerateAbstractBuilder {
                                                        AnnotationDataOption configuredOption,
                                                        TypeName providerType,
                                                        boolean defaultDiscoverServices) {
-        preBuildBuilder.addContentLine("{");
-        preBuildBuilder.addContent("var serviceLoader = ")
-                .addContent(HelidonServiceLoader.class)
-                .addContent(".create(")
-                .addContent(ServiceLoader.class)
-                .addContent(".load(")
-                .addContent(providerType.genericTypeName())
-                .addContentLine(".class));");
+        TypeName typeName = property.typeHandler().declaredType();
         if (propertyConfigured) {
-            TypeName typeName = property.typeHandler().declaredType();
             if (typeName.isList() || typeName.isSet()) {
                 preBuildBuilder.addContent("this.add")
                         .addContent(capitalize(property.name()))
@@ -672,7 +728,7 @@ final class GenerateAbstractBuilder {
                         .addContent(CONFIG_BUILDER_SUPPORT)
                         .addContent(".discoverServices(config, \"")
                         .addContent(configuredOption.configKey())
-                        .addContent("\", serviceLoader, ")
+                        .addContent("\", ")
                         .addContent(providerType.genericTypeName())
                         .addContent(".class, ")
                         .addContent(property.typeHandler().actualType().genericTypeName())
@@ -686,7 +742,7 @@ final class GenerateAbstractBuilder {
                         .addContent(CONFIG_BUILDER_SUPPORT)
                         .addContent(".discoverService(config, \"")
                         .addContent(configuredOption.configKey())
-                        .addContent("\", serviceLoader, ")
+                        .addContent("\", ")
                         .addContent(providerType)
                         .addContent(".class, ")
                         .addContent(property.typeHandler().actualType().genericTypeName())
@@ -701,17 +757,92 @@ final class GenerateAbstractBuilder {
                         .addContentLine(");");
             }
         } else {
-            if (defaultDiscoverServices) {
-                preBuildBuilder.addContentLine("this." + property.name() + "(serviceLoader.asList());");
+            if (typeName.isList() || typeName.isSet()) {
+                preBuildBuilder.addContent("this.add")
+                        .addContent(capitalize(property.name()))
+                        .addContent("(")
+                        .addContent(BUILDER_SUPPORT)
+                        .addContent(".discoverServices(")
+                        .addContent(providerType.genericTypeName())
+                        .addContent(".class, ")
+                        .addContent(property.name())
+                        .addContent("DiscoverServices, ")
+                        .addContent(property.name())
+                        .addContentLine("));");
+            } else {
+                preBuildBuilder
+                        .addContent(BUILDER_SUPPORT)
+                        .addContent(".discoverService(")
+                        .addContent(providerType)
+                        .addContent(".class, ")
+                        .addContent(property.name())
+                        .addContent("DiscoverServices, ")
+                        .addContent(Optional.class)
+                        .addContent(".ofNullable(")
+                        .addContent(property.name())
+                        .addContent(")).ifPresent(this::")
+                        .addContent(property.setterName())
+                        .addContentLine(");");
             }
         }
-        preBuildBuilder.addContentLine("}");
     }
 
     private static void serviceRegistryProperty(Method.Builder preBuildBuilder,
                                                 PrototypeProperty property) {
         TypeName typeName = property.typeHandler().declaredType();
+
+        // Example: .of("bean-name") or .empty()
+        var namedQualifierFromAnnotation = property.qualifiers()
+                .stream()
+                .filter(a -> a.typeName().equals(SERVICE_NAMED))
+                .flatMap(annotation -> annotation.stringValue().stream())
+                .map(s -> ".of(\"" + s + "\")")
+                .findFirst()
+                .orElse(".empty()");
+
+        // Example: Optional<String> regionQualifier =
+        preBuildBuilder
+                .addContent("Optional<String> ")
+                .addContent(property.name())
+                .addContent("Qualifier = ");
+
+        if (property.configuredOption().configured()) {
+            /* Configured named qualifier wins over annotation
+            Example:
+            Optional<String> regionQualifier = config.get("region.service-registry.named")
+                    .asString()
+                    .orElse(Optional.of("bean-name"));
+            */
+            preBuildBuilder
+                    .addContent("config.get(")
+                    .addContentLiteral(property.configuredOption().configKey() + "." + SERVICE_REGISTRY_CONFIG_KEY + ".named")
+                    .addContentLine(")")
+                    .increaseContentPadding()
+                    .addContentLine(".asString()")
+                    .addContent(".or(() -> ")
+                    .addContent(OPTIONAL)
+                    .addContent(namedQualifierFromAnnotation)
+                    .addContentLine(");")
+                    .decreaseContentPadding();
+        } else {
+            /* Example:
+            Optional<String> regionQualifier = Optional.of("bean-name");
+            */
+            preBuildBuilder
+                    .addContent(OPTIONAL)
+                    .addContent(namedQualifierFromAnnotation)
+                    .addContentLine(";");
+        }
+
         if (typeName.isList()) {
+
+            /*
+            this.addRegion(RegistryBuilderSupport.serviceList(registry,
+                                           TypeName.create("com.oracle.bmc.Region"),
+                                           regionQualifier,
+                                           Optional.ofNullable(region),
+                                           regionDiscoverServices));
+            */
             preBuildBuilder
                     .addContent("this.add")
                     .addContent(capitalize(property.name()))
@@ -721,8 +852,18 @@ final class GenerateAbstractBuilder {
                     .addContentCreate(property.typeHandler().actualType())
                     .addContent(", ")
                     .addContent(property.name())
-                    .addContentLine("DiscoverServices));");
+                    .addContent("DiscoverServices, ")
+                    .addContent(property.name())
+                    .addContentLine("Qualifier));");
+
         } else if (typeName.isSet()) {
+             /*
+            this.addRegion(RegistryBuilderSupport.serviceSet(registry,
+                                           TypeName.create("com.oracle.bmc.Region"),
+                                           regionQualifier,
+                                           Optional.ofNullable(region),
+                                           regionDiscoverServices));
+            */
             preBuildBuilder
                     .addContent("this.add")
                     .addContent(capitalize(property.name()))
@@ -732,8 +873,19 @@ final class GenerateAbstractBuilder {
                     .addContentCreate(property.typeHandler().actualType())
                     .addContent(", ")
                     .addContent(property.name())
-                    .addContentLine("DiscoverServices));");
+                    .addContent("DiscoverServices, ")
+                    .addContent(property.name())
+                    .addContentLine("Qualifier));");
         } else {
+
+            /*
+            RegistryBuilderSupport.service(registry,
+                                           TypeName.create("com.oracle.bmc.Region"),
+                                           regionQualifiers,
+                                           Optional.ofNullable(region),
+                                           regionDiscoverServices)
+                                  .ifPresent(this::region);
+            */
             preBuildBuilder
                     .addContent(REGISTRY_BUILDER_SUPPORT)
                     .addContent(".service(registry, ")
@@ -744,9 +896,14 @@ final class GenerateAbstractBuilder {
                     .addContent(property.name())
                     .addContent("), ")
                     .addContent(property.name())
-                    .addContent("DiscoverServices).ifPresent(this::")
+                    .addContent("DiscoverServices, ")
+                    .addContent(property.name())
+                    .addContentLine("Qualifier)")
+                    .increaseContentPadding()
+                    .addContent(".ifPresent(this::")
                     .addContent(property.setterName())
-                    .addContentLine(");");
+                    .addContentLine(");")
+                    .decreaseContentPadding();
         }
     }
 
@@ -754,10 +911,9 @@ final class GenerateAbstractBuilder {
                                                          PrototypeProperty property,
                                                          boolean propertyConfigured,
                                                          AnnotationDataOption configuredOption,
-                                                         TypeName providerType,
-                                                         boolean defaultDiscoverServices) {
+                                                         TypeName providerType) {
+        TypeName typeName = property.typeHandler().declaredType();
         if (propertyConfigured) {
-            TypeName typeName = property.typeHandler().declaredType();
             if (typeName.isList() || typeName.isSet()) {
                 preBuildBuilder.addContent("this.add")
                         .addContent(capitalize(property.name()))
@@ -811,10 +967,42 @@ final class GenerateAbstractBuilder {
                         .decreaseContentPadding();
             }
         } else {
-            if (defaultDiscoverServices) {
-                preBuildBuilder.addContent("this." + property.name() + "(registry.all(")
-                        .addContent(providerType.genericTypeName())
-                        .addContentLine(".class));");
+            if (typeName.isList()) {
+                preBuildBuilder
+                        .addContent("this.add")
+                        .addContent(capitalize(property.name()))
+                        .addContent("(")
+                        .addContent(REGISTRY_BUILDER_SUPPORT)
+                        .addContent(".serviceList(registry, ")
+                        .addContentCreate(property.typeHandler().actualType())
+                        .addContent(", ")
+                        .addContent(property.name())
+                        .addContentLine("DiscoverServices));");
+            } else if (typeName.isSet()) {
+                preBuildBuilder
+                        .addContent("this.add")
+                        .addContent(capitalize(property.name()))
+                        .addContent("(")
+                        .addContent(REGISTRY_BUILDER_SUPPORT)
+                        .addContent(".serviceSet(registry, ")
+                        .addContentCreate(property.typeHandler().actualType())
+                        .addContent(", ")
+                        .addContent(property.name())
+                        .addContentLine("DiscoverServices));");
+            } else {
+                preBuildBuilder
+                        .addContent(REGISTRY_BUILDER_SUPPORT)
+                        .addContent(".service(registry, ")
+                        .addContentCreate(property.typeHandler().actualType())
+                        .addContent(", ")
+                        .addContent(Optional.class)
+                        .addContent(".ofNullable(")
+                        .addContent(property.name())
+                        .addContent("), ")
+                        .addContent(property.name())
+                        .addContent("DiscoverServices).ifPresent(this::")
+                        .addContent(property.setterName())
+                        .addContentLine(");");
             }
         }
     }
@@ -1221,26 +1409,33 @@ final class GenerateAbstractBuilder {
         for (PrototypeProperty child : typeContext.propertyData().properties()) {
             constructor.addContent("this." + child.name() + " = ");
             TypeName declaredType = child.typeHandler().declaredType();
-            if (declaredType.genericTypeName().equals(LIST)) {
-                constructor.addContent(List.class)
-                        .addContentLine(".copyOf(builder." + child.getterName() + "());");
-            } else if (declaredType.genericTypeName().equals(SET)) {
-                constructor.addContent(Collections.class)
-                        .addContent(".unmodifiableSet(new ")
-                        .addContent(LinkedHashSet.class)
-                        .addContentLine("<>(builder." + child.getterName() + "()));");
-            } else if (declaredType.genericTypeName().equals(MAP)) {
-                constructor.addContent(Collections.class)
-                        .addContent(".unmodifiableMap(new ")
-                        .addContent(LinkedHashMap.class)
-                        .addContentLine("<>(builder." + child.getterName() + "()));");
+
+            if (declaredType.equals(OPTIONAL_COMMON_CONFIG)) {
+                constructor.addContent("builder." + child.getterName() + "().map(")
+                        .addContent(Function.class)
+                        .addContentLine(".identity());");
             } else {
-                if (child.builderGetterOptional() && !declaredType.isOptional()) {
-                    // builder getter optional, but type not, we call get (must be present - is validated)
-                    constructor.addContentLine("builder." + child.getterName() + "().get();");
+                if (declaredType.genericTypeName().equals(LIST)) {
+                    constructor.addContent(List.class)
+                            .addContentLine(".copyOf(builder." + child.getterName() + "());");
+                } else if (declaredType.genericTypeName().equals(SET)) {
+                    constructor.addContent(Collections.class)
+                            .addContent(".unmodifiableSet(new ")
+                            .addContent(LinkedHashSet.class)
+                            .addContentLine("<>(builder." + child.getterName() + "()));");
+                } else if (declaredType.genericTypeName().equals(MAP)) {
+                    constructor.addContent(Collections.class)
+                            .addContent(".unmodifiableMap(new ")
+                            .addContent(LinkedHashMap.class)
+                            .addContentLine("<>(builder." + child.getterName() + "()));");
                 } else {
-                    // optional and other types are just plainly assigned
-                    constructor.addContentLine("builder." + child.getterName() + "();");
+                    if (child.builderGetterOptional() && !declaredType.isOptional()) {
+                        // builder getter optional, but type not, we call get (must be present - is validated)
+                        constructor.addContentLine("builder." + child.getterName() + "().get();");
+                    } else {
+                        // optional and other types are just plainly assigned
+                        constructor.addContentLine("builder." + child.getterName() + "();");
+                    }
                 }
             }
         }

@@ -1,6 +1,5 @@
-
 /*
- * Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,12 +17,15 @@
 package io.helidon.builder.codegen;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import io.helidon.codegen.CodegenContext;
 import io.helidon.codegen.ElementInfoPredicates;
@@ -38,6 +40,7 @@ import io.helidon.common.types.TypeNames;
 
 import static io.helidon.builder.codegen.Types.PROTOTYPE_BUILDER_DECORATOR;
 import static io.helidon.builder.codegen.Types.PROTOTYPE_FACTORY;
+import static io.helidon.builder.codegen.Types.PROTOTYPE_INCLUDE_DEFAULTS;
 import static io.helidon.common.types.TypeNames.OBJECT;
 import static io.helidon.common.types.TypeNames.OPTIONAL;
 
@@ -103,6 +106,12 @@ record TypeContext(
         boolean beanStyleAccessors = blueprintAnnotation.getValue("beanStyle")
                 .map(Boolean::parseBoolean)
                 .orElse(false);
+        boolean includeDefaultMethods = blueprint.hasAnnotation(PROTOTYPE_INCLUDE_DEFAULTS);
+        Set<String> includedDefaultMethods = blueprint.findAnnotation(PROTOTYPE_INCLUDE_DEFAULTS)
+                .flatMap(Annotation::stringValues)
+                .stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
 
 
         /*
@@ -121,11 +130,13 @@ record TypeContext(
                                 ignoredMethods,
                                 ignoreInterfaces,
                                 beanStyleAccessors,
-                                superPrototypeMethods);
+                                superPrototypeMethods,
+                                includeDefaultMethods,
+                                includedDefaultMethods);
         errors.collect().checkValid();
 
         /*
-         now some properties on the current blueprint may be overriding properties from on of the super prototypes
+         now some properties on the current blueprint may be overriding properties from one of the super prototypes
          in such a case, we must handle it specifically
          - if it has a different default value, update it in the supertype (constructor should call setter with the default
          */
@@ -214,10 +225,11 @@ record TypeContext(
                 .stream()
                 .filter(ElementInfoPredicates::isMethod)
                 .anyMatch(ElementInfoPredicates.hasAnnotation(Types.OPTION_PROVIDER));
-        supportsServiceRegistry |= blueprint.elementInfo()
-                        .stream()
-                        .filter(ElementInfoPredicates::isMethod)
-                        .anyMatch(ElementInfoPredicates.hasAnnotation(Types.OPTION_REGISTRY_SERVICE));
+        supportsServiceRegistry |= Stream.concat(Stream.of(blueprint), blueprint.interfaceTypeInfo().stream())
+                .map(TypeInfo::elementInfo)
+                .flatMap(Collection::stream)
+                .filter(ElementInfoPredicates::isMethod)
+                .anyMatch(ElementInfoPredicates.hasAnnotation(Types.OPTION_REGISTRY_SERVICE));
 
         TypeInformation typeInformation = new TypeInformation(supportsServiceRegistry,
                                                               blueprint,
@@ -329,7 +341,9 @@ record TypeContext(
                                                 Set<MethodSignature> ignoredMethods,
                                                 Set<TypeName> ignoreInterfaces,
                                                 boolean beanStyleAccessors,
-                                                Set<MethodSignature> superPrototypeMethods) {
+                                                Set<MethodSignature> superPrototypeMethods,
+                                                boolean includeDefaultMethods,
+                                                Set<String> includedDefaultMethods) {
 
         // we are only interested in getter methods
         TypeName typeName = typeInfo.typeName();
@@ -339,6 +353,12 @@ record TypeContext(
                                   .filter(Predicate.not(ElementInfoPredicates::isPrivate))
                                   .filter(it -> {
                                       if (it.elementModifiers().contains(Modifier.DEFAULT)) {
+                                          if (includeDefaultMethods) {
+                                              if (includedDefaultMethods.isEmpty()
+                                                      || includedDefaultMethods.contains(it.elementName())) {
+                                                  return true;
+                                              }
+                                          }
                                           ignoredMethods.add(MethodSignature.create(it));
                                           return false;
                                       }
@@ -368,6 +388,11 @@ record TypeContext(
                                       // parameters and return type
                                       if (it.typeName().equals(TypeNames.PRIMITIVE_VOID)) {
                                           // invalid return type for builder
+                                          if (it.elementModifiers().contains(Modifier.DEFAULT)
+                                                && includeDefaultMethods) {
+                                              // ignore invalid default methods if we support all default methods
+                                              return false;
+                                          }
 
                                           errors.message("Builder definition methods cannot have void return type "
                                                                  + "(must be getters): "
@@ -376,6 +401,12 @@ record TypeContext(
                                           return false;
                                       }
                                       if (!it.parameterArguments().isEmpty()) {
+                                          if (it.elementModifiers().contains(Modifier.DEFAULT)
+                                                  && includeDefaultMethods) {
+                                              // ignore invalid default methods if we support all default methods
+                                              return false;
+                                          }
+
                                           errors.message("Builder definition methods cannot have "
                                                                  + "parameters (must be getters): "
                                                                  + typeName + "." + it.elementName(),
@@ -397,6 +428,22 @@ record TypeContext(
         List<TypeInfo> interfaces = typeInfo.interfaceTypeInfo();
 
         for (TypeInfo anInterface : interfaces) {
+            boolean hasIncludeAnnotation = anInterface.hasAnnotation(PROTOTYPE_INCLUDE_DEFAULTS);
+            boolean nextIncludeDefaults = includeDefaultMethods || hasIncludeAnnotation;
+            Set<String> nextIncludedDefaultMethods = anInterface.findAnnotation(PROTOTYPE_INCLUDE_DEFAULTS)
+                    .flatMap(Annotation::stringValues)
+                    .stream()
+                    .flatMap(List::stream)
+                    .collect(Collectors.toSet());
+
+            Set<String> usedIncludedDefaults;
+            if (hasIncludeAnnotation && includedDefaultMethods.isEmpty()) {
+                usedIncludedDefaults = includedDefaultMethods;
+            } else {
+                usedIncludedDefaults = new HashSet<>(includedDefaultMethods);
+                usedIncludedDefaults.addAll(nextIncludedDefaultMethods);
+            }
+
             gatherBuilderProperties(ctx,
                                     anInterface,
                                     errors,
@@ -404,7 +451,9 @@ record TypeContext(
                                     ignoredMethods,
                                     ignoreInterfaces,
                                     beanStyleAccessors,
-                                    superPrototypeMethods);
+                                    superPrototypeMethods,
+                                    nextIncludeDefaults,
+                                    usedIncludedDefaults);
         }
     }
 

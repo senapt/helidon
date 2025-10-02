@@ -74,7 +74,7 @@
                     <list key="src-dirs" if="!${multi-module}">
                         <value>ADD src src</value>
                     </list>
-                    <list key="native-sections" if="${docker.native-image}">
+                    <list key="native-sections" if="${native-image}">
                         <value file="files/README.native.md"/>
                     </list>
                     <list key="readme-sections">
@@ -147,7 +147,7 @@ For more information on available configuration options see the helidon-maven-pl
                                 ]]>
                         </value>
                     </list>
-                    <list key="docker-phase1-options" if="${~flavor} == 'mp'">
+                    <list key="docker-phase1-options" if="${flavor} == 'mp'">
                         <value>-Declipselink.weave.skip</value>
                         <value>-DskipOpenApiGenerate</value>
                     </list>

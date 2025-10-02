@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2022, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,6 @@
  */
 
 package io.helidon.webclient.http2;
-
-import java.time.Duration;
 
 import io.helidon.common.uri.UriQueryWriteable;
 import io.helidon.http.Method;
@@ -59,7 +57,7 @@ public class Http2ClientImpl implements Http2Client, HttpClientSpi {
         UriQueryWriteable query = UriQueryWriteable.create();
         clientConfig.baseQuery().ifPresent(query::from);
 
-        return new Http2ClientRequestImpl(this, method, clientUri, clientConfig.properties());
+        return new Http2ClientRequestImpl(this, null, method, clientUri, clientConfig.properties());
     }
 
     @Override
@@ -69,14 +67,13 @@ public class Http2ClientImpl implements Http2Client, HttpClientSpi {
 
     @Override
     public SupportLevel supports(FullClientRequest<?> clientRequest, ClientUri clientUri) {
-        ConnectionKey ck = new ConnectionKey(clientUri.scheme(),
-                                             clientUri.host(),
-                                             clientUri.port(),
-                                             clientConfig.readTimeout().orElse(Duration.ZERO),
-                                             clientRequest.tls(),
-                                             clientConfig.dnsResolver(),
-                                             clientConfig.dnsAddressLookup(),
-                                             clientRequest.proxy());
+        ConnectionKey ck = ConnectionKey.create(clientUri.scheme(),
+                                                clientUri.host(),
+                                                clientUri.port(),
+                                                clientRequest.tls(),
+                                                clientConfig.dnsResolver(),
+                                                clientConfig.dnsAddressLookup(),
+                                                clientRequest.proxy());
         if (connectionCache.supports(ck)) {
             return SupportLevel.SUPPORTED;
         }
@@ -87,6 +84,7 @@ public class Http2ClientImpl implements Http2Client, HttpClientSpi {
     @Override
     public ClientRequest<?> clientRequest(FullClientRequest<?> clientRequest, ClientUri clientUri) {
         Http2ClientRequest request = new Http2ClientRequestImpl(this,
+                                                                clientRequest,
                                                                 clientRequest.method(),
                                                                 clientUri,
                                                                 clientRequest.properties());

@@ -21,7 +21,7 @@
     <parent>
         <groupId>io.helidon.microprofile.tests.tck</groupId>
         <artifactId>helidon-microprofile-tests-tck-project</artifactId>
-        <version>4.2.0-SNAPSHOT</version>
+        <version>4.3.0-SNAPSHOT</version>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
@@ -37,6 +37,15 @@
         <dependency>
             <groupId>io.helidon.microprofile.rest-client</groupId>
             <artifactId>helidon-microprofile-rest-client</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!--
+            Adding the REST client metrics support is not required for the REST client TCK to work,
+            but it exercises the metrics support in a very broad set of use cases.
+        -->
+        <dependency>
+            <groupId>io.helidon.microprofile.rest-client-metrics</groupId>
+            <artifactId>helidon-microprofile-rest-client-metrics</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

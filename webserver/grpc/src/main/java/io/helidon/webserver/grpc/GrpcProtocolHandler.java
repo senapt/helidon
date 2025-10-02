@@ -31,6 +31,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.LazyValue;
 import io.helidon.common.buffers.BufferData;
+import io.helidon.grpc.core.GrpcHeadersUtil;
 import io.helidon.http.Header;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
@@ -106,7 +107,7 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
     private final StreamFlowControl flowControl;
     private final GrpcConfig grpcConfig;
 
-    private ServerCall.Listener<REQ> listener;
+    private volatile ServerCall.Listener<REQ> listener;
     private BufferData entityBytes;
     private Compressor compressor;
     private Decompressor decompressor;
@@ -425,6 +426,11 @@ class GrpcProtocolHandler<REQ, RES> implements Http2SubProtocolSelector.SubProto
                                           flowControl.outbound());
                 currentStreamState.updateAndGet(
                         current -> nextStreamState(current, Http2StreamState.HALF_CLOSED_LOCAL));
+
+                // inform listener of completion
+                if (!callCancelled) {
+                    listener.onComplete();
+                }
 
                 // update metrics
                 if (status.isOk() && grpcConfig.enableMetrics()) {

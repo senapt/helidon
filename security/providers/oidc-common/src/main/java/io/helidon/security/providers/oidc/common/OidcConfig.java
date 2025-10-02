@@ -22,6 +22,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -375,6 +376,7 @@ public final class OidcConfig extends TenantConfigImpl {
     static final boolean DEFAULT_PARAM_USE = false;
     static final boolean DEFAULT_HEADER_USE = false;
     static final boolean DEFAULT_COOKIE_USE = true;
+    static final boolean DEFAULT_PKCE_ENABLED = false;
 
     private static final System.Logger LOGGER = System.getLogger(OidcConfig.class.getName());
 
@@ -409,6 +411,10 @@ public final class OidcConfig extends TenantConfigImpl {
     private final boolean tokenSignatureValidation;
     private final boolean idTokenSignatureValidation;
     private final boolean accessTokenIpCheck;
+    private final boolean pkceEnabled;
+    private final PkceChallengeMethod pkceChallengeMethod;
+    private final OidcOutboundType outboundType;
+    private final ClientCredentialsConfig clientCredentialsConfig;
 
     private OidcConfig(Builder builder) {
         super(builder);
@@ -442,9 +448,13 @@ public final class OidcConfig extends TenantConfigImpl {
         this.tokenSignatureValidation = builder.tokenSignatureValidation;
         this.idTokenSignatureValidation = builder.idTokenSignatureValidation;
         this.accessTokenIpCheck = builder.accessTokenIpCheck;
+        this.pkceEnabled = builder.pkceEnabled;
+        this.pkceChallengeMethod = builder.pkceChallengeMethod;
 
         this.webClientBuilderSupplier = builder.webClientBuilderSupplier;
         this.defaultTenant = LazyValue.create(() -> Tenant.create(this, this));
+        this.outboundType = builder.outboundType;
+        this.clientCredentialsConfig = builder.clientCredentialsConfig;
 
         LOGGER.log(Level.TRACE, () -> "Redirect URI with host: " + frontendUri + redirectUri);
     }
@@ -836,6 +846,42 @@ public final class OidcConfig extends TenantConfigImpl {
         return accessTokenIpCheck;
     }
 
+    /**
+     * Whether Proof Key Code Exchange (PKCE) is enabled.
+     *
+     * @return enabled PKCE
+     */
+    public boolean pkceEnabled() {
+        return pkceEnabled;
+    }
+
+    /**
+     * Selected Proof Key Code Exchange (PKCE) challenge generation method.
+     *
+     * @return PKCE challenge generation method
+     */
+    public PkceChallengeMethod pkceChallengeMethod() {
+        return pkceChallengeMethod;
+    }
+
+    /**
+     * Selected type of the OIDC outbound.
+     *
+     * @return OIDC outbound type
+     */
+    public OidcOutboundType outboundType() {
+        return outboundType;
+    }
+
+    /**
+     * Client credentials configuration.
+     *
+     * @return client credentials config
+     */
+    public ClientCredentialsConfig clientCredentialsConfig() {
+        return clientCredentialsConfig;
+    }
+
     Supplier<WebClientConfig.Builder> webClientBuilderSupplier() {
         return webClientBuilderSupplier;
     }
@@ -914,7 +960,11 @@ public final class OidcConfig extends TenantConfigImpl {
         /**
          * Request to validate a JWT against an introspection endpoint.
          */
-        INTROSPECT_JWT;
+        INTROSPECT_JWT,
+        /**
+         * Request to exchange client id and secret for an access token.
+         */
+        ID_AND_SECRET_TO_TOKEN;
     }
 
     /**
@@ -948,6 +998,10 @@ public final class OidcConfig extends TenantConfigImpl {
         private String tenantParamName = DEFAULT_TENANT_PARAM_NAME;
         private boolean useHeader = DEFAULT_HEADER_USE;
         private boolean useParam = DEFAULT_PARAM_USE;
+        private OidcOutboundType outboundType = OidcOutboundType.USER_JWT;
+        private ClientCredentialsConfig clientCredentialsConfig = ClientCredentialsConfig.create();
+        private boolean pkceEnabled = DEFAULT_PKCE_ENABLED;
+        private PkceChallengeMethod pkceChallengeMethod = PkceChallengeMethod.S256;
 
         private final OidcCookieHandler.Builder tenantCookieBuilder = OidcCookieHandler.builder()
                 .encryptionEnabled(true)
@@ -993,6 +1047,13 @@ public final class OidcConfig extends TenantConfigImpl {
             if (useCookie && logoutEnabled) {
                 if (postLogoutUri == null) {
                     collector.fatal("post-logout-uri must be defined when logout is enabled.");
+                }
+            }
+            if (outboundType == OidcOutboundType.CLIENT_CREDENTIALS) {
+                if (clientCredentialsConfig.scope().isEmpty()
+                        && serverType().equals("idcs")) {
+                    collector.fatal("client-credential.scope must be defined when client credentials flow "
+                                            + "is set as an outbound type and \"idcs\" is the server type");
                 }
             }
 
@@ -1128,6 +1189,12 @@ public final class OidcConfig extends TenantConfigImpl {
 
             config.get("tenants").asList(Config.class)
                     .ifPresent(confList -> confList.forEach(tenantConfig -> tenantFromConfig(config, tenantConfig)));
+
+            config.get("outbound-type").as(OidcOutboundType.class).ifPresent(this::outboundType);
+            config.get("client-credentials").as(Config.class)
+                    .ifPresent(it -> clientCredentialsConfig(ClientCredentialsConfig.create(it)));
+            config.get("pkce-enabled").asBoolean().ifPresent(this::pkceEnabled);
+            config.get("pkce-challenge-method").as(PkceChallengeMethod.class).ifPresent(this::pkceChallengeMethod);
 
             webClientConfigBuilder.config(config.get("webclient"));
             return this;
@@ -1799,6 +1866,45 @@ public final class OidcConfig extends TenantConfigImpl {
         }
 
         /**
+         * Type of the OIDC outbound.
+         * Default value is {@link OidcOutboundType#USER_JWT}.
+         *
+         * @param oidcOutboundType outbound type
+         * @return updated builder instance
+         */
+        @ConfiguredOption("USER_JWT")
+        private Builder outboundType(OidcOutboundType oidcOutboundType) {
+            this.outboundType = Objects.requireNonNull(oidcOutboundType);
+            return this;
+        }
+
+        /**
+         * Whether this provider should support PKCE.
+         * Default value is {@code false}.
+         *
+         * @param enabled PKCE enabled
+         * @return updated builder instance
+         */
+        @ConfiguredOption("false")
+        public Builder pkceEnabled(boolean enabled) {
+            pkceEnabled = enabled;
+            return this;
+        }
+
+        /**
+         * Proof Key Code Exchange (PKCE) challenge creation method.
+         * Default value is {@link PkceChallengeMethod#S256}.
+         *
+         * @param pkceChallengeMethod challenge creation method
+         * @return updated builder instance
+         */
+        @ConfiguredOption("S256")
+        public Builder pkceChallengeMethod(PkceChallengeMethod pkceChallengeMethod) {
+            this.pkceChallengeMethod = Objects.requireNonNull(pkceChallengeMethod);
+            return this;
+        }
+
+        /**
          * WebClient configuration consumer.
          * This configuration is used for outbound requests to the identity server.
          *
@@ -1821,5 +1927,31 @@ public final class OidcConfig extends TenantConfigImpl {
             webClientConfigBuilder.socketOptions(newSocketBuilder);
             return this;
         }
+
+        /**
+         * Set the configuration related to the client credentials flow.
+         *
+         * @param clientCredentialsConfig client credentials configuration
+         * @return updated builder instance
+         */
+        @ConfiguredOption
+        public Builder clientCredentialsConfig(ClientCredentialsConfig clientCredentialsConfig) {
+            this.clientCredentialsConfig = Objects.requireNonNull(clientCredentialsConfig);
+            return this;
+        }
+
+        /**
+         * Configure client credentials configuration over the builder consumer.
+         *
+         * @param builderConsumer builder consumer
+         * @return updated builder instance
+         */
+        public Builder clientCredentialsConfig(Consumer<ClientCredentialsConfig.Builder> builderConsumer) {
+            var builder = ClientCredentialsConfig.builder();
+            builderConsumer.accept(builder);
+            this.clientCredentialsConfig = builder.build();
+            return this;
+        }
+
     }
 }

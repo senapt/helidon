@@ -143,9 +143,11 @@ public final class ErrorHandlers {
                                         ServerRequest request,
                                         RoutingResponse response,
                                         RequestException e) {
-        if (!response.reset()) {
-            ctx.log(LOGGER, System.Logger.Level.WARNING, "Request failed: " + request.prologue()
-                    + ", cannot send error response, as response already sent", e);
+        // we are only interested in resetting the streams, headers are at the discretion of the error handler
+        if (!response.resetStream()) {
+            ctx.log(LOGGER, System.Logger.Level.WARNING,
+                    "Request failed: %s, cannot send error response, as response already sent",
+                    e, request.prologue());
             throw new CloseConnectionException(
                     "Cannot send response of an error handler, status and headers already written");
         }
@@ -209,8 +211,13 @@ public final class ErrorHandlers {
                              RoutingResponse response,
                              Throwable e,
                              ErrorHandler<Throwable> it) {
-        if (!response.reset()) {
-            ctx.log(LOGGER, System.Logger.Level.WARNING, "Unable to reset response for error handler.");
+        // we are only interested in resetting the streams, headers are at the discretion of the error handler
+        if (!response.resetStream()) {
+            ctx.log(LOGGER,
+                    System.Logger.Level.WARNING,
+                    "Unable to reset response for error handler, at least part of entity already written. "
+                            + "Error handler cannot be invoked.",
+                    e);
             throw new CloseConnectionException(
                     "Cannot send response of a simple handler, status and headers already written", e);
         }

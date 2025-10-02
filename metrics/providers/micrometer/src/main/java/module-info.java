@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,20 @@
  * limitations under the License.
  */
 
+import io.helidon.common.features.api.Features;
+import io.helidon.common.features.api.HelidonFlavor;
+
 /**
  * Micrometer adapter for Helidon metrics API.
  */
+@Features.Name("Metrics")
+@Features.Description("Micrometer provider for metrics")
+@Features.Flavor(HelidonFlavor.SE)
+@Features.Path({"Metrics", "Micrometer"})
 module io.helidon.metrics.providers.micrometer {
+
+    requires static io.helidon.common.features.api;
+
     requires io.helidon.metrics.api;
     requires micrometer.core;
     requires static micrometer.registry.prometheus;
@@ -28,6 +38,7 @@ module io.helidon.metrics.providers.micrometer {
     requires simpleclient.common;
     requires simpleclient.tracer.common;
     requires simpleclient;
+    requires io.helidon.service.registry;
 
     exports io.helidon.metrics.providers.micrometer.spi;
 

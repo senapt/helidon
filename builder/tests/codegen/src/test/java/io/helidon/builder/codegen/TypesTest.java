@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2024, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 
+import io.helidon.builder.api.BuilderSupport;
 import io.helidon.builder.api.Description;
 import io.helidon.builder.api.GeneratedBuilder;
 import io.helidon.builder.api.Option;
@@ -35,10 +36,11 @@ import io.helidon.builder.api.Prototype;
 import io.helidon.builder.api.RuntimeType;
 import io.helidon.common.Generated;
 import io.helidon.common.config.Config;
-import io.helidon.common.config.ConfigBuilderSupport;
 import io.helidon.common.types.TypeName;
+import io.helidon.config.ConfigBuilderSupport;
 import io.helidon.service.registry.GlobalServiceRegistry;
 import io.helidon.service.registry.RegistryBuilderSupport;
+import io.helidon.service.registry.Service;
 import io.helidon.service.registry.ServiceRegistry;
 import io.helidon.service.registry.Services;
 
@@ -82,6 +84,8 @@ public class TypesTest {
         }
 
         checkField(toCheck, checked, fields, "COMMON_CONFIG", Config.class);
+        checkField(toCheck, checked, fields, "CONFIG", io.helidon.config.Config.class);
+        checkField(toCheck, checked, fields, "CONFIG_BUILDER", io.helidon.config.Config.Builder.class);
         checkField(toCheck, checked, fields, "GENERATED", Generated.class);
         checkField(toCheck, checked, fields, "DEPRECATED", Deprecated.class);
         checkField(toCheck, checked, fields, "LINKED_HASH_MAP", LinkedHashMap.class);
@@ -108,6 +112,7 @@ public class TypesTest {
         checkField(toCheck, checked, fields, "PROTOTYPE_BUILDER_DECORATOR", Prototype.BuilderDecorator.class);
         checkField(toCheck, checked, fields, "PROTOTYPE_CONSTANT", Prototype.Constant.class);
         checkField(toCheck, checked, fields, "PROTOTYPE_SERVICE_REGISTRY", Prototype.RegistrySupport.class);
+        checkField(toCheck, checked, fields, "PROTOTYPE_INCLUDE_DEFAULTS", Prototype.IncludeDefaultMethods.class);
         checkField(toCheck, checked, fields, "GENERATED_EQUALITY_UTIL", GeneratedBuilder.EqualityUtil.class);
         checkField(toCheck, checked, fields, "RUNTIME_PROTOTYPE", RuntimeType.PrototypedBy.class);
         checkField(toCheck, checked, fields, "RUNTIME_PROTOTYPED_BY", RuntimeType.PrototypedBy.class);
@@ -133,8 +138,12 @@ public class TypesTest {
         checkField(toCheck, checked, fields, "OPTION_TYPE", Option.Type.class);
         checkField(toCheck, checked, fields, "OPTION_DECORATOR", Option.Decorator.class);
         checkField(toCheck, checked, fields, "OPTION_REGISTRY_SERVICE", Option.RegistryService.class);
+        checkField(toCheck, checked, fields, "OPTION_TRAVERSE_CONFIG", Option.TraverseConfig.class);
+        checkField(toCheck, checked, fields, "BUILDER_SUPPORT", BuilderSupport.class);
 
         checkField(toCheck, checked, fields, "SERVICES", Services.class);
+        checkField(toCheck, checked, fields, "SERVICE_NAMED", Service.Named.class);
+        checkField(toCheck, checked, fields, "SERVICE_QUALIFIER", Service.Qualifier.class);
 
         checkField(toCheck, checked, fields, "CONFIG_BUILDER_SUPPORT", ConfigBuilderSupport.class);
         checkField(toCheck, checked, fields, "CONFIG_CONFIGURED_BUILDER", ConfigBuilderSupport.ConfiguredBuilder.class);

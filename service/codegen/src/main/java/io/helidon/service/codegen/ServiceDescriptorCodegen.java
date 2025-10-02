@@ -68,6 +68,7 @@ import static io.helidon.service.codegen.ServiceCodegenTypes.INTERCEPTION_EXTERN
 import static io.helidon.service.codegen.ServiceCodegenTypes.INTERCEPT_EXCEPTION;
 import static io.helidon.service.codegen.ServiceCodegenTypes.INTERCEPT_METADATA;
 import static io.helidon.service.codegen.ServiceCodegenTypes.LIST_OF_DEPENDENCIES;
+import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_ANNOTATION_ENTRY_POINT;
 import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_ANNOTATION_INJECT;
 import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_ANNOTATION_NAMED;
 import static io.helidon.service.codegen.ServiceCodegenTypes.SERVICE_ANNOTATION_PER_INSTANCE;
@@ -199,6 +200,7 @@ public class ServiceDescriptorCodegen {
                 .sortStaticFields(false);
 
         singletonInstanceField(classModel, service);
+        singletonLoggerField(classModel, service);
 
         Map<String, GenericTypeDeclaration> genericTypes = genericTypes(classModel, params, methods);
 
@@ -1061,6 +1063,17 @@ public class ServiceDescriptorCodegen {
                 .defaultValueContent("new " + service.descriptorType().className() + "<>()"));
     }
 
+    private void singletonLoggerField(ClassModel.Builder classModel, DescribedService service) {
+        // singleton instance of the descriptor
+        classModel.addField(instance -> instance
+                .accessModifier(AccessModifier.PRIVATE)
+                .isStatic(true)
+                .isFinal(true)
+                .type(System.Logger.class)
+                .name("LOGGER")
+                .defaultValueContent("System.getLogger(\"" + service.serviceDescriptor().typeName().genericTypeName() + "\")"));
+    }
+
     private void injectionPointFields(ClassModel.Builder classModel,
                                       TypeInfo service,
                                       Map<String, GenericTypeDeclaration> genericTypes,
@@ -1143,6 +1156,20 @@ public class ServiceDescriptorCodegen {
                                 it.addContentLine(")");
                             }
                         }
+
+                        // filter annotations by removing qualifiers
+                        var qualifierTypes = param.qualifiers()
+                                .stream()
+                                .map(Annotation::typeName)
+                                .collect(Collectors.toUnmodifiableSet());
+                        param.annotations()
+                                .stream()
+                                .filter(annotation -> !qualifierTypes.contains(annotation.typeName()))
+                                .forEach(annotation -> {
+                                    it.addContent(".addAnnotation(")
+                                            .addContentCreate(annotation)
+                                            .addContentLine(")");
+                                });
 
                         if (!dependencyMetadata.cardinality.equals("REQUIRED")) {
                             // only set if not default
@@ -1629,6 +1656,17 @@ public class ServiceDescriptorCodegen {
                 .map(ParamDefinition::ipParamName)
                 .collect(Collectors.joining(", "));
 
+        method.addContent("if (LOGGER.isLoggable(")
+                .addContent(System.Logger.Level.class)
+                .addContentLine(".DEBUG)) {")
+                .increaseContentPadding()
+                .addContent("LOGGER.log(")
+                .addContent(System.Logger.Level.class)
+                .addContent(".DEBUG, \"instantiate")
+                .addContentLine(" (weight = \" + weight() + \", run level = \" + runLevel().orElse(null) + \")\");")
+                .decreaseContentPadding()
+                .addContentLine("}");
+
         if (interceptedMethods) {
             // return new MyImpl__Intercepted(interceptMeta, this, ANNOTATIONS, casted params
             method.addContent("return new ")
@@ -1907,6 +1945,9 @@ public class ServiceDescriptorCodegen {
                     .addAnnotation(Annotations.OVERRIDE)
                     .addParameter(instance -> instance.type(typeName)
                             .name("instance"))
+                    .addContent("LOGGER.log(")
+                    .addContent(System.Logger.Level.class)
+                    .addContentLine(".DEBUG, \"postConstruct\");")
                     .addContentLine("instance." + method.elementName() + "();"));
         });
     }
@@ -1921,6 +1962,9 @@ public class ServiceDescriptorCodegen {
                     .addAnnotation(Annotations.OVERRIDE)
                     .addParameter(instance -> instance.type(typeName)
                             .name("instance"))
+                    .addContent("LOGGER.log(")
+                    .addContent(System.Logger.Level.class)
+                    .addContentLine(".DEBUG, \"preDestroy\");")
                     .addContentLine("instance." + method.elementName() + "();"));
         });
     }
@@ -2228,6 +2272,46 @@ public class ServiceDescriptorCodegen {
         TypeInfo typeInfo = service.serviceDescriptor().typeInfo();
 
         for (TypedElements.ElementMeta element : interceptedElements) {
+            addMethodElementField(typeInfo, classModel, element);
+        }
+
+        // now go through all methods that have meta-annotation of an entry point and add them
+        service.serviceDescriptor()
+                .elements()
+                .plainElements()
+                .stream()
+                .filter(this::isEntryPoint)
+                .forEach(element -> {
+                    addMethodElementField(typeInfo, classModel, element);
+                });
+    }
+
+    private boolean isEntryPoint(TypedElements.ElementMeta element) {
+        TypedElementInfo method = element.element();
+        if (!ElementInfoPredicates.isMethod(method)) {
+            return false;
+        }
+        if (ElementInfoPredicates.isAbstract(method)) {
+            return false;
+        }
+        if (ElementInfoPredicates.isStatic(method)) {
+            return false;
+        }
+        List<Annotation> elementAnnotations = new ArrayList<>(method.annotations());
+        addInterfaceAnnotations(elementAnnotations, element.abstractMethods());
+
+        for (Annotation elementAnnotation : elementAnnotations) {
+            if (elementAnnotation.hasMetaAnnotation(SERVICE_ANNOTATION_ENTRY_POINT)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void addMethodElementField(TypeInfo typeInfo,
+                                       ClassModel.Builder classModel,
+                                       TypedElements.ElementMeta element) {
+
             var method = element.element();
             String uniqueName = ctx.uniqueName(typeInfo, method);
             String constantName = "METHOD_" + toConstantName(uniqueName);
@@ -2248,7 +2332,6 @@ public class ServiceDescriptorCodegen {
                     .name(constantName)
                     .addContentCreate(typedElementInfo));
         }
-    }
 
     private void generateInterceptedType(RegistryRoundContext roundContext,
                                          TypeInfo typeInfo,

@@ -52,7 +52,7 @@ import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
 import io.helidon.common.types.TypedElementInfo;
 
-import static io.helidon.builder.codegen.Types.COMMON_CONFIG;
+import static io.helidon.builder.codegen.Types.CONFIG;
 import static io.helidon.codegen.CodegenUtil.capitalize;
 
 abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
@@ -197,7 +197,7 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
             }
             if (mapList) {
                 method.addContentLine(configGet(configured)
-                                              + ".mapList("
+                                              + ".asList("
                                               + generateMapListFromConfig(factoryMethods)
                                               + ").ifPresent(this::" + setterName() + ");");
             } else {
@@ -208,15 +208,28 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
         } else if (BUILT_IN_MAPPERS.contains(actualType)) {
             // types we support in config can be simplified,
             // this also supports comma separated lists for string based types
+
             method.addContent(configGet(configured))
                     .addContent(".asList(")
                     .addContent(actualType.genericTypeName())
                     .addContent(".class")
                     .addContent(")");
             configMapper.ifPresent(method::addContent);
-            method.addContent(".ifPresent(this::")
-                    .addContent(setterName())
-                    .addContentLine(");");
+
+            if (actualType().typeArguments().isEmpty()) {
+                method.addContent(".ifPresent(this::")
+                        .addContent(setterName())
+                        .addContentLine(");");
+            } else {
+                method.addContent(".ifPresent(it -> this.")
+                        .addContent(setterName())
+                        .addContent("((")
+                        .addContent(collectionType)
+                        .addContentLine(")it));");
+                // maybe we should add @SuppressWarnings("unchecked")
+            }
+
+
         } else {
             method.addContent(configGet(configured)
                                       + ".asNodeList()"
@@ -331,6 +344,11 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
                                        Javadoc blueprintJavadoc,
                                        FactoryMethods factoryMethods,
                                        FactoryMethods.FactoryMethod factoryMethod) {
+        if (!configured.singular()) {
+            // if singular is not defined, we are not instructed to create add methods, so it does not make sense
+            // to create an add method with a builder consumer
+            return;
+        }
         // if there is a factory method for the return type, we also have setters for the type (probably config object)
         TypeName builderType;
         if (factoryMethod.factoryMethodReturnType().className().equals("Builder")) {
@@ -338,6 +356,11 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
         } else {
             builderType = TypeName.create(factoryMethod.factoryMethodReturnType().fqName() + ".Builder");
         }
+
+        if (skipBuilderConsumer(builderType)) {
+            return;
+        }
+
         TypeName argumentType = TypeName.builder()
                 .type(Consumer.class)
                 .addTypeArgument(builderType)
@@ -369,14 +392,20 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
             builder.addContentLine("this." + name() + "(builder.build());")
                     .addContentLine("return self();");
             classBuilder.addMethod(builder);
-        } else if (configured.singular()) {
-            String singularName = configured.singularName();
-            String methodName = "add" + capitalize(singularName);
-            builder.name(methodName)
-                    .addContentLine("this." + name() + ".add(builder.build());")
-                    .addContentLine("return self();");
-            classBuilder.addMethod(builder);
+            return;
         }
+
+        String singularName = configured.singularName();
+        String methodName;
+        if (configured.singularAddPrefix()) {
+            methodName = "add" + capitalize(singularName);
+        } else {
+            methodName = singularName;
+        }
+        builder.name(methodName)
+                .addContentLine("this." + name() + ".add(builder.build());")
+                .addContentLine("return self();");
+        classBuilder.addMethod(builder);
     }
 
     private void singularSetter(InnerClass.Builder classBuilder,
@@ -384,7 +413,12 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
                                 TypeName returnType,
                                 Javadoc blueprintJavadoc,
                                 String singularName) {
-        String methodName = "add" + capitalize(singularName);
+        String methodName;
+        if (configured.singularAddPrefix()) {
+            methodName = "add" + capitalize(singularName);
+        } else {
+            methodName = singularName;
+        }
 
         Method.Builder builder = Method.builder()
                 .name(methodName)
@@ -419,7 +453,7 @@ abstract class TypeHandlerCollection extends TypeHandler.OneTypeHandler {
                                TypeName returnType,
                                Javadoc blueprintJavadoc,
                                FactoryMethods.FactoryMethod factoryMethod) {
-        if (factoryMethod.argumentType().equals(COMMON_CONFIG)) {
+        if (factoryMethod.argumentType().equals(CONFIG)) {
             // if the factory method uses config as a parameter, then it is not desired on the builder
             return;
         }

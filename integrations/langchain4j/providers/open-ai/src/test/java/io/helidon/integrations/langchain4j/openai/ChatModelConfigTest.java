@@ -17,18 +17,25 @@
 package io.helidon.integrations.langchain4j.openai;
 
 import java.time.Duration;
+import java.util.Optional;
 
+import io.helidon.common.media.type.MediaTypes;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 import io.helidon.integrations.langchain4j.providers.openai.OpenAiChatModelConfig;
+import io.helidon.service.registry.ServiceRegistry;
+import io.helidon.testing.junit5.Testing;
 
 import org.junit.jupiter.api.Test;
 
+import static dev.langchain4j.model.chat.Capability.RESPONSE_FORMAT_JSON_SCHEMA;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
+@Testing.Test
 class ChatModelConfigTest {
 
     @Test
@@ -66,7 +73,8 @@ class ChatModelConfigTest {
         assertThat(config.logitBias().get("key1"), is(1));
         assertThat(config.logitBias().get("key2"), is(2));
         assertThat(config.responseFormat().isPresent(), is(true));
-        assertThat(config.responseFormat().get(), is("response-format"));
+        assertThat(config.responseFormat().get(), is("json-object"));
+        assertThat(config.supportedCapabilities(), contains(RESPONSE_FORMAT_JSON_SCHEMA));
         assertThat(config.strictJsonSchema().isPresent(), is(true));
         assertThat(config.strictJsonSchema().get(), is(false));
         assertThat(config.seed().isPresent(), is(true));
@@ -85,10 +93,37 @@ class ChatModelConfigTest {
         assertThat(config.logRequests().get(), is(true));
         assertThat(config.logResponses().isPresent(), is(true));
         assertThat(config.logResponses().get(), is(true));
-        assertThat(config.tokenizer().isPresent(), is(false));
         assertThat(config.customHeaders().size(), is(2));
         assertThat(config.customHeaders().get("header1"), is(equalTo("value1")));
         assertThat(config.customHeaders().get("header2"), is(equalTo("value2")));
-        assertThat(config.proxy().isPresent(), is(false));
+    }
+
+    @Test
+    void testNamedClient(ServiceRegistry registry) {
+
+        var yaml = """
+                langchain4j.open-ai:
+                  chat-model:
+                    http-client-builder.service-registry.named: "namedHttpClient"
+                """;
+
+        var config = OpenAiChatModelConfig.builder()
+                .serviceRegistry(registry)
+                .config(Config.just(ConfigSources.create(yaml, MediaTypes.APPLICATION_X_YAML))
+                                .get(OpenAiChatModelConfig.CONFIG_ROOT))
+                .build();
+
+        assertThat(config.httpClientBuilder().map(builder -> builder.build().execute(null).body()), is(Optional.of("namedHttpClient")));
+    }
+
+    @Test
+    void testDefaultClient(ServiceRegistry registry) {
+
+        var config = OpenAiChatModelConfig.builder()
+                .serviceRegistry(registry)
+                .config(Config.empty())
+                .build();
+
+        assertThat(config.httpClientBuilder().map(builder -> builder.build().execute(null).body()), is(Optional.of("defaultHttpClient")));
     }
 }

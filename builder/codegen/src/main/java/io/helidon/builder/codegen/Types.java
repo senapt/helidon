@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023, 2024 Oracle and/or its affiliates.
+ * Copyright (c) 2023, 2025 Oracle and/or its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,8 @@ import io.helidon.common.types.TypeName;
 
 final class Types {
     static final TypeName COMMON_CONFIG = TypeName.create("io.helidon.common.config.Config");
+    static final TypeName CONFIG = TypeName.create("io.helidon.config.Config");
+    static final TypeName CONFIG_BUILDER = TypeName.create("io.helidon.config.Config.Builder");
     static final TypeName GENERATED = TypeName.create(Generated.class);
     static final TypeName DEPRECATED = TypeName.create(Deprecated.class);
     static final TypeName LINKED_HASH_MAP = TypeName.create(LinkedHashMap.class);
@@ -37,6 +39,8 @@ final class Types {
     static final TypeName SERVICE_REGISTRY = TypeName.create("io.helidon.service.registry.ServiceRegistry");
     static final TypeName GLOBAL_SERVICE_REGISTRY = TypeName.create("io.helidon.service.registry.GlobalServiceRegistry");
     static final TypeName SERVICES = TypeName.create("io.helidon.service.registry.Services");
+    static final TypeName SERVICE_NAMED = TypeName.create("io.helidon.service.registry.Service.Named");
+    static final TypeName SERVICE_QUALIFIER = TypeName.create("io.helidon.service.registry.Service.Qualifier");
 
     static final TypeName BUILDER_DESCRIPTION = TypeName.create("io.helidon.builder.api.Description");
 
@@ -55,6 +59,7 @@ final class Types {
     static final TypeName PROTOTYPE_BUILDER_DECORATOR = TypeName.create("io.helidon.builder.api.Prototype.BuilderDecorator");
     static final TypeName PROTOTYPE_CONSTANT = TypeName.create("io.helidon.builder.api.Prototype.Constant");
     static final TypeName PROTOTYPE_SERVICE_REGISTRY = TypeName.create("io.helidon.builder.api.Prototype.RegistrySupport");
+    static final TypeName PROTOTYPE_INCLUDE_DEFAULTS = TypeName.create("io.helidon.builder.api.Prototype.IncludeDefaultMethods");
     static final TypeName GENERATED_EQUALITY_UTIL = TypeName.create("io.helidon.builder.api.GeneratedBuilder.EqualityUtil");
 
     static final TypeName RUNTIME_PROTOTYPE = TypeName.create("io.helidon.builder.api.RuntimeType.PrototypedBy");
@@ -82,10 +87,12 @@ final class Types {
     static final TypeName OPTION_DEPRECATED = TypeName.create("io.helidon.builder.api.Option.Deprecated");
     static final TypeName OPTION_TYPE = TypeName.create("io.helidon.builder.api.Option.Type");
     static final TypeName OPTION_DECORATOR = TypeName.create("io.helidon.builder.api.Option.Decorator");
+    static final TypeName OPTION_TRAVERSE_CONFIG = TypeName.create("io.helidon.builder.api.Option.TraverseConfig");
 
     static final TypeName CONFIG_CONFIGURED_BUILDER = TypeName.create(
-            "io.helidon.common.config.ConfigBuilderSupport.ConfiguredBuilder");
-    static final TypeName CONFIG_BUILDER_SUPPORT = TypeName.create("io.helidon.common.config.ConfigBuilderSupport");
+            "io.helidon.config.ConfigBuilderSupport.ConfiguredBuilder");
+    static final TypeName BUILDER_SUPPORT = TypeName.create("io.helidon.builder.api.BuilderSupport");
+    static final TypeName CONFIG_BUILDER_SUPPORT = TypeName.create("io.helidon.config.ConfigBuilderSupport");
 
     static final TypeName REGISTRY_BUILDER_SUPPORT = TypeName.create("io.helidon.service.registry.RegistryBuilderSupport");
 

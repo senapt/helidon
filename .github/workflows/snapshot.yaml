@@ -23,8 +23,9 @@ on:
       - 'helidon-*.x'
 
 env:
-  JAVA_VERSION: '21'
-  JAVA_DISTRO: 'oracle'
+  MVN_VERSION: 3.9.9
+  JAVA_VERSION: 21
+  JAVA_DISTRO: oracle
   MVN_ARGS: |
     -B -e
     -Dmaven.wagon.httpconnectionManager.ttlSeconds=60
@@ -90,7 +91,7 @@ jobs:
   deploy:
     needs: [ get-version, stage ]
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     environment: release
     steps:
       - uses: actions/checkout@v4

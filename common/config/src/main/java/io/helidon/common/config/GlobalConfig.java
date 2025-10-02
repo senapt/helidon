@@ -25,7 +25,6 @@ import java.util.function.Supplier;
 
 import io.helidon.common.HelidonServiceLoader;
 import io.helidon.common.LazyValue;
-import io.helidon.common.config.spi.ConfigProvider;
 import io.helidon.service.registry.Services;
 
 /**
@@ -42,13 +41,16 @@ import io.helidon.service.registry.Services;
  * {@link io.helidon.service.registry.Services#set(Class, Object[])} to use a custom instance of configuration, just make sure
  * it is registered before it is used the first time
  */
+@SuppressWarnings("removal")
 @Deprecated(forRemoval = true, since = "4.2.0")
 public final class GlobalConfig {
     private static final System.Logger LOGGER = System.getLogger(GlobalConfig.class.getName());
     private static final AtomicBoolean LOGGED_REGISTERED = new AtomicBoolean(false);
     private static final Config EMPTY = Config.empty();
+    private static final AtomicBoolean GLOBAL_FROM_REGISTRY = new AtomicBoolean();
     private static final LazyValue<Config> DEFAULT_CONFIG = LazyValue.create(() -> {
-        List<ConfigProvider> providers = HelidonServiceLoader.create(ServiceLoader.load(ConfigProvider.class))
+        List<io.helidon.common.config.spi.ConfigProvider> providers =
+                HelidonServiceLoader.create(ServiceLoader.load(io.helidon.common.config.spi.ConfigProvider.class))
                 .asList();
         // no implementations available, use empty configuration
         if (providers.isEmpty()) {
@@ -82,6 +84,10 @@ public final class GlobalConfig {
      */
     @Deprecated(forRemoval = true, since = "4.2.0")
     public static Config config() {
+        if (GLOBAL_FROM_REGISTRY.get()) {
+            return Services.get(Config.class);
+        }
+
         return configured() ? CONFIG.get() : DEFAULT_CONFIG.get();
     }
 
@@ -109,30 +115,52 @@ public final class GlobalConfig {
     public static Config config(Supplier<Config> config, boolean overwrite) {
         Objects.requireNonNull(config);
 
+        if (GLOBAL_FROM_REGISTRY.get()) {
+            return Services.get(Config.class);
+        }
+
         if (overwrite || !configured()) {
             // there is a certain risk we may do this twice, if two components try to set global config in parallel.
             // as the result was already unclear (as order matters), we do not need to be 100% thread safe here
             Config configInstance = config.get();
-            CONFIG.set(configInstance);
+            config(configInstance, false);
 
             try {
                 Services.set(Config.class, configInstance);
             } catch (Exception e) {
-                if (LOGGED_REGISTERED.compareAndSet(false, true)) {
-                    // only log this once
-                    LOGGER.log(System.Logger.Level.WARNING,
-                               "Attempting to set a config instance when it either was already "
-                                       + "set once, or it was already used by a component. "
-                                       + "This will not work in future versions of Helidon",
-                               e);
+                Config registryInstance = Services.get(Config.class);
+                if (registryInstance != configInstance) {
+                    // only warn if the instance we are trying to set differs from the one in registry
+                    // if they are the same, somebody already used Services.get and then tried to register it as global
+                    if (LOGGED_REGISTERED.compareAndSet(false, true)) {
+                        // only log this once
+                        LOGGER.log(System.Logger.Level.WARNING,
+                                   "Attempting to set a config instance when it either was already "
+                                           + "set once, or it was already used by a component. "
+                                           + "This will not work in future versions of Helidon",
+                                   e);
+                    }
                 }
             }
         }
+
         return CONFIG.get();
     }
 
+    /**
+     * This is a temporary method to allow backward compatibility. Please do not use this method.
+     *
+     * @param config config to set
+     * @param fromServiceRegistry whether the instance was explicitly configured by user, or obtained from service registry
+     */
+    @Deprecated(forRemoval = true, since = "4.3.0")
+    public static void config(Config config, boolean fromServiceRegistry) {
+        GLOBAL_FROM_REGISTRY.set(fromServiceRegistry);
+        CONFIG.set(config);
+    }
+
     static Config create() {
-        List<ConfigProvider> providers = HelidonServiceLoader.create(ServiceLoader.load(ConfigProvider.class))
+        var providers = HelidonServiceLoader.create(ServiceLoader.load(io.helidon.common.config.spi.ConfigProvider.class))
                 .asList();
         // no implementations available, use empty configuration
         if (providers.isEmpty()) {

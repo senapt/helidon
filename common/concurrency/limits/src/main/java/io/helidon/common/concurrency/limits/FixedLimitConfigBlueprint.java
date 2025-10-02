@@ -112,4 +112,5 @@ interface FixedLimitConfigBlueprint extends Prototype.Factory<FixedLimit> {
     @Option.Configured
     @Option.DefaultBoolean(false)
     boolean enableMetrics();
+
 }

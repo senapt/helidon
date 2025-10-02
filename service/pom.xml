@@ -24,7 +24,7 @@
     <parent>
         <groupId>io.helidon</groupId>
         <artifactId>helidon-project</artifactId>
-        <version>4.2.0-SNAPSHOT</version>
+        <version>4.3.0-SNAPSHOT</version>
         <relativePath>../pom.xml</relativePath>
     </parent>
 
@@ -46,6 +46,7 @@
         <module>codegen</module>
         <module>registry</module>
         <module>maven-plugin</module>
+        <module>jndi</module>
     </modules>
 
     <build>
