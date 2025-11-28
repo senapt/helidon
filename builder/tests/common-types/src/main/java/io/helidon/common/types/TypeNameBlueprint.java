@@ -45,10 +45,10 @@ import io.helidon.builder.api.Prototype;
  * <li>{@link #declaredName()} and {@link #resolvedName()}.</li>
  * </ul>
  */
-@Prototype.Blueprint(decorator = TypeNameSupport.Decorator.class)
+@Prototype.Blueprint(decorator = TypeNameSupport.Decorator.class, createEmptyPublic = false)
 @Prototype.CustomMethods(TypeNameSupport.class)
 @Prototype.Implement("java.lang.Comparable<TypeName>")
-interface TypeNameBlueprint {
+interface TypeNameBlueprint extends Annotated {
     /**
      * Functions similar to {@link Class#getPackageName()}.
      *

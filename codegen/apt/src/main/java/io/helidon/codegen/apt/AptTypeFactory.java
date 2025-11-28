@@ -28,6 +28,7 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.ExecutableElement;
@@ -42,6 +43,7 @@ import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.type.TypeVariable;
 import javax.lang.model.type.WildcardType;
+import javax.lang.model.util.Elements;
 
 import io.helidon.common.types.TypeName;
 import io.helidon.common.types.TypeNames;
@@ -56,6 +58,7 @@ import static io.helidon.common.types.TypeName.createFromGenericDeclaration;
 @Deprecated(forRemoval = true, since = "4.2.0")
 public final class AptTypeFactory {
     private static final Pattern NESTED_TYPES = Pattern.compile("(?<!\\$)\\$(?!\\$)");
+
     private AptTypeFactory() {
     }
 
@@ -75,125 +78,10 @@ public final class AptTypeFactory {
      * @param typeMirror annotation processing type mirror
      * @return type name
      * @throws IllegalArgumentException when the mirror cannot be resolved into a name (such as when it represents
-     *                                            none or error)
+     *                                  none or error)
      */
     public static Optional<TypeName> createTypeName(TypeMirror typeMirror) {
-        return createTypeName(new HashSet<>(), typeMirror);
-    }
-
-    private static Optional<TypeName> createTypeName(Set<TypeMirror> inProgress, TypeMirror typeMirror) {
-        TypeKind kind = typeMirror.getKind();
-        if (kind.isPrimitive()) {
-            Class<?> type = switch (kind) {
-                case BOOLEAN -> boolean.class;
-                case BYTE -> byte.class;
-                case SHORT -> short.class;
-                case INT -> int.class;
-                case LONG -> long.class;
-                case CHAR -> char.class;
-                case FLOAT -> float.class;
-                case DOUBLE -> double.class;
-                default -> throw new IllegalStateException("Unknown primitive type: " + kind);
-            };
-
-            return Optional.of(TypeName.create(type));
-        }
-
-        switch (kind) {
-        case VOID -> {
-            return Optional.of(TypeName.create(void.class));
-        }
-        case TYPEVAR -> {
-            if (!inProgress.add(typeMirror)) {
-                return Optional.empty(); // prevent infinite loop
-            }
-
-            try {
-                var builder = TypeName.builder(createFromGenericDeclaration(typeMirror.toString()));
-
-                var typeVar = ((TypeVariable) typeMirror);
-                handleBounds(inProgress, typeVar.getUpperBound(), builder::addUpperBound);
-                handleBounds(inProgress, typeVar.getLowerBound(), builder::addLowerBound);
-
-                return Optional.of(builder.build());
-            } finally {
-                inProgress.remove(typeMirror);
-            }
-        }
-        case WILDCARD -> {
-            WildcardType vt = ((WildcardType) typeMirror);
-            var builder = TypeName.builder()
-                    .generic(true)
-                    .wildcard(true)
-                    .className("?");
-
-            handleBounds(inProgress, vt.getExtendsBound(), builder::addUpperBound);
-            handleBounds(inProgress, vt.getSuperBound(), builder::addLowerBound);
-
-            return Optional.of(builder.build());
-        }
-        case ERROR -> {
-            return Optional.of(TypeName.create(typeMirror.toString()));
-        }
-        // this is most likely a type that is code generated as part of this round, best effort
-        case NONE -> {
-            return Optional.empty();
-        }
-        default -> {
-        }
-        // fall through
-        }
-
-        if (typeMirror instanceof ArrayType arrayType) {
-            TypeName typeName = createTypeName(inProgress, arrayType.getComponentType()).orElseThrow();
-            return Optional.of(TypeName.builder(typeName)
-                                       .componentType(typeName)
-                                       .array(true)
-                                       .build());
-        }
-
-        if (typeMirror instanceof DeclaredType declaredType) {
-            List<TypeName> typeParams = declaredType.getTypeArguments()
-                    .stream()
-                    .map(it -> createTypeName(inProgress, it))
-                    .flatMap(Optional::stream)
-                    .collect(Collectors.toList());
-
-            TypeName result = createTypeName(inProgress, declaredType.asElement()).orElse(null);
-            if (typeParams.isEmpty() || result == null) {
-                return Optional.ofNullable(result);
-            }
-
-            if (!inProgress.add(typeMirror)) {
-                return Optional.empty(); // prevent infinite loop
-            }
-            return Optional.of(TypeName.builder(result).typeArguments(typeParams).build());
-        }
-
-        throw new IllegalStateException("Unknown type mirror: " + typeMirror);
-    }
-
-    private static void handleBounds(Set<TypeMirror> processed, TypeMirror boundMirror, Consumer<TypeName> boundHandler) {
-        if (boundMirror == null) {
-            return;
-        }
-        if (boundMirror.getKind() != TypeKind.NULL) {
-            if (boundMirror.getKind() == TypeKind.INTERSECTION) {
-                IntersectionType it = (IntersectionType) boundMirror;
-                it.getBounds()
-                        .stream()
-                        .filter(Predicate.not(processed::equals))
-                        .map(typeMirror -> createTypeName(processed, typeMirror))
-                        .flatMap(Optional::stream)
-                        .filter(Predicate.not(TypeNames.OBJECT::equals))
-                        .forEach(boundHandler);
-
-            } else {
-                createTypeName(processed, boundMirror)
-                        .filter(Predicate.not(TypeNames.OBJECT::equals))
-                        .ifPresent(boundHandler);
-            }
-        }
+        return createTypeName(null, new HashSet<>(), typeMirror);
     }
 
     /**
@@ -201,11 +89,11 @@ public final class AptTypeFactory {
      * type arguments to type parameters.
      *
      * @param element the type element of the type mirror
-     * @param mirror the type mirror as declared in source code
+     * @param mirror  the type mirror as declared in source code
      * @return type for the provided values
      */
     public static Optional<TypeName> createTypeName(TypeElement element, TypeMirror mirror) {
-        Optional<TypeName> result = createTypeName(new HashSet<>(), mirror);
+        Optional<TypeName> result = createTypeName(null, new HashSet<>(), mirror);
         if (result.isEmpty()) {
             return result;
         }
@@ -233,21 +121,169 @@ public final class AptTypeFactory {
      * @return the associated type name instance
      */
     public static Optional<TypeName> createTypeName(Element type) {
-        return createTypeName(new HashSet<>(), type);
+        return createTypeName(null, new HashSet<>(), type);
     }
 
-    private static Optional<TypeName> createTypeName(Set<TypeMirror> processed, Element type) {
+    /**
+     * A replacement for {@link #createTypeName(javax.lang.model.element.Element)}, as we require elements to be able
+     * to process annotations.
+     *
+     * @param elements APT elements
+     * @param type     element to get type name for
+     * @return type name, if available, may include type argument annotations (i.e. {@code List<@NonEmpty String>}}
+     */
+    static Optional<TypeName> createTypeName(Elements elements, Element type) {
+        return createTypeName(elements, new HashSet<>(), type);
+    }
+
+    // we must accept `null` elements, until we hide the methods from public
+    // as otherwise this whole method would have to be duplicated
+    private static Optional<TypeName> createTypeName(Elements elements, Set<TypeMirror> inProgress, TypeMirror typeMirror) {
+        TypeKind kind = typeMirror.getKind();
+        if (kind.isPrimitive()) {
+            Class<?> type = switch (kind) {
+                case BOOLEAN -> boolean.class;
+                case BYTE -> byte.class;
+                case SHORT -> short.class;
+                case INT -> int.class;
+                case LONG -> long.class;
+                case CHAR -> char.class;
+                case FLOAT -> float.class;
+                case DOUBLE -> double.class;
+                default -> throw new IllegalStateException("Unknown primitive type: " + kind);
+            };
+
+            return Optional.of(TypeName.create(type));
+        }
+
+        switch (kind) {
+        case VOID -> {
+            return Optional.of(TypeName.create(void.class));
+        }
+        case TYPEVAR -> {
+            if (!inProgress.add(typeMirror)) {
+                // prevent infinite loop
+                return Optional.of(TypeName.createFromGenericDeclaration(typeMirror.toString()));
+            }
+
+            try {
+                var builder = TypeName.builder(createFromGenericDeclaration(typeMirror.toString()));
+
+                var typeVar = ((TypeVariable) typeMirror);
+                handleBounds(elements, inProgress, typeVar.getUpperBound(), builder::addUpperBound);
+                handleBounds(elements, inProgress, typeVar.getLowerBound(), builder::addLowerBound);
+
+                return Optional.of(builder.build());
+            } finally {
+                inProgress.remove(typeMirror);
+            }
+        }
+        case WILDCARD -> {
+            WildcardType vt = ((WildcardType) typeMirror);
+            var builder = TypeName.builder()
+                    .generic(true)
+                    .wildcard(true)
+                    .className("?");
+
+            handleBounds(elements, inProgress, vt.getExtendsBound(), builder::addUpperBound);
+            handleBounds(elements, inProgress, vt.getSuperBound(), builder::addLowerBound);
+
+            return Optional.of(builder.build());
+        }
+        case ERROR -> {
+            return Optional.of(TypeName.create(typeMirror.toString()));
+        }
+        // this is most likely a type that is code generated as part of this round, best effort
+        case NONE -> {
+            return Optional.empty();
+        }
+        default -> {
+        }
+        // fall through
+        }
+
+        if (typeMirror instanceof ArrayType arrayType) {
+            TypeName typeName = createTypeName(elements, inProgress, arrayType.getComponentType()).orElseThrow();
+            return Optional.of(TypeName.builder(typeName)
+                                       .componentType(typeName)
+                                       .array(true)
+                                       .build());
+        }
+
+        if (typeMirror instanceof DeclaredType declaredType) {
+            List<TypeName> typeParams = declaredType.getTypeArguments()
+                    .stream()
+                    .map(it -> createTypeName(elements, inProgress, it))
+                    .flatMap(Optional::stream)
+                    .collect(Collectors.toList());
+
+            TypeName result = createTypeName(elements, inProgress, declaredType.asElement()).orElse(null);
+
+            if (result == null) {
+                return Optional.empty();
+            }
+
+            var annotationMirrors = declaredType.getAnnotationMirrors();
+            if (!annotationMirrors.isEmpty() && elements != null) {
+                // we cannot do this if elements is null
+                var newResultBuilder = TypeName.builder(result);
+                for (AnnotationMirror annotationMirror : annotationMirrors) {
+                    newResultBuilder.addAnnotation(AptAnnotationFactory.createAnnotation(annotationMirror, elements));
+                }
+                result = newResultBuilder.build();
+            }
+
+            if (typeParams.isEmpty()) {
+                return Optional.ofNullable(result);
+            }
+
+            if (!inProgress.add(typeMirror)) {
+                return Optional.empty(); // prevent infinite loop
+            }
+            return Optional.of(TypeName.builder(result).typeArguments(typeParams).build());
+        }
+
+        throw new IllegalStateException("Unknown type mirror: " + typeMirror);
+    }
+
+    private static void handleBounds(Elements elements,
+                                     Set<TypeMirror> processed,
+                                     TypeMirror boundMirror,
+                                     Consumer<TypeName> boundHandler) {
+        if (boundMirror == null) {
+            return;
+        }
+        if (boundMirror.getKind() != TypeKind.NULL) {
+            if (boundMirror.getKind() == TypeKind.INTERSECTION) {
+                IntersectionType it = (IntersectionType) boundMirror;
+                it.getBounds()
+                        .stream()
+                        .filter(Predicate.not(processed::equals))
+                        .map(typeMirror -> createTypeName(elements, processed, typeMirror))
+                        .flatMap(Optional::stream)
+                        .filter(Predicate.not(TypeNames.OBJECT::equals))
+                        .forEach(boundHandler);
+
+            } else {
+                createTypeName(elements, processed, boundMirror)
+                        .filter(Predicate.not(TypeNames.OBJECT::equals))
+                        .ifPresent(boundHandler);
+            }
+        }
+    }
+
+    private static Optional<TypeName> createTypeName(Elements elements, Set<TypeMirror> processed, Element type) {
         if (type instanceof VariableElement) {
-            return createTypeName(processed, type.asType());
+            return createTypeName(elements, processed, type.asType());
         }
 
         if (type instanceof ExecutableElement ee) {
-            return createTypeName(processed, ee.getReturnType());
+            return createTypeName(elements, processed, ee.getReturnType());
         }
 
         if (type.getKind() == ElementKind.TYPE_PARAMETER) {
             TypeMirror mirror = type.asType();
-            return createTypeName(processed, mirror);
+            return createTypeName(elements, processed, mirror);
         }
 
         List<String> classNames = new ArrayList<>();

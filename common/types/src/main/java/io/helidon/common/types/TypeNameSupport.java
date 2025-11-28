@@ -78,6 +78,18 @@ final class TypeNameSupport {
             PRIMITIVE_VOID, BOXED_VOID
     );
 
+    private static final Map<TypeName, TypeName> UNBOXED_TYPES = Map.of(
+            BOXED_BOOLEAN, PRIMITIVE_BOOLEAN,
+            BOXED_BYTE, PRIMITIVE_BYTE,
+            BOXED_SHORT, PRIMITIVE_SHORT,
+            BOXED_INT, PRIMITIVE_INT,
+            BOXED_LONG, PRIMITIVE_LONG,
+            BOXED_CHAR, PRIMITIVE_CHAR,
+            BOXED_FLOAT, PRIMITIVE_FLOAT,
+            BOXED_DOUBLE, PRIMITIVE_DOUBLE,
+            BOXED_VOID, PRIMITIVE_VOID
+    );
+
     private TypeNameSupport() {
     }
 
@@ -106,6 +118,19 @@ final class TypeNameSupport {
     @Prototype.PrototypeMethod
     static TypeName boxed(TypeName original) {
         return Optional.ofNullable(BOXED_TYPES.get(original))
+                .orElse(original);
+    }
+
+    /**
+     * Return the unboxed equivalent of this type.
+     * If this is a boxed primitive, the primitive type is returned.
+     *
+     * @param original instance to unbox
+     * @return primitive type for this type, or this type if not boxed primitive type
+     */
+    @Prototype.PrototypeMethod
+    static TypeName unboxed(TypeName original) {
+        return Optional.ofNullable(UNBOXED_TYPES.get(original))
                 .orElse(original);
     }
 
@@ -238,7 +263,7 @@ final class TypeNameSupport {
      * @param type the type
      * @return type name for the provided type
      */
-    @Prototype.FactoryMethod
+    @Prototype.PrototypeFactoryMethod
     static TypeName create(Type type) {
         if (type instanceof Class<?> clazz) {
             return TypeStash.stash(clazz);
@@ -258,7 +283,7 @@ final class TypeNameSupport {
      * @param typeName the FQN of the class type
      * @return the TypeName for the provided type name
      */
-    @Prototype.FactoryMethod
+    @Prototype.PrototypeFactoryMethod
     static TypeName create(String typeName) {
         Objects.requireNonNull(typeName);
         return TypeStash.stash(typeName);
@@ -365,7 +390,7 @@ final class TypeNameSupport {
      * @param genericAliasTypeName the generic alias type name
      * @return the TypeName for the provided type name
      */
-    @Prototype.FactoryMethod
+    @Prototype.PrototypeFactoryMethod
     static TypeName createFromGenericDeclaration(String genericAliasTypeName) {
         return TypeName.builder()
                 .generic(true)
@@ -476,7 +501,18 @@ final class TypeNameSupport {
     private static void updateFromClass(TypeName.BuilderBase<?, ?> builder, Class<?> classType) {
         Class<?> componentType = classType.isArray() ? classType.getComponentType() : classType;
         builder.packageName(componentType.getPackageName());
-        builder.className(componentType.getSimpleName());
+        String className = componentType.getSimpleName();
+        if (className.isBlank()) {
+            // anonymous inner classes - name must be guessed from the fully qualified class name
+            className = componentType.getName();
+            int lastDollar = className.lastIndexOf('$');
+            if (lastDollar > 0) {
+                className = className.substring(lastDollar + 1);
+            } else {
+                throw new IllegalArgumentException("Anonymous inner classes must have a name: " + className);
+            }
+        }
+        builder.className(className);
         builder.array(classType.isArray());
 
         if (classType.isArray()) {
